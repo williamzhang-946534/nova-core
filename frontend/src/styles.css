@@ -1,0 +1,79 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  color: #1f2937;
+  background: #f4f6f8;
+  font-family:
+    Inter,
+    "Segoe UI",
+    "Microsoft YaHei",
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.app-shell {
+  min-height: 100%;
+}
+
+.app-sider {
+  border-right: 1px solid #e5e7eb;
+}
+
+.app-brand {
+  height: 64px;
+  padding: 20px 24px;
+  font-size: 18px;
+  font-weight: 650;
+  color: #111827;
+}
+
+.app-header {
+  height: 64px;
+  padding: 0 24px;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 600;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  line-height: 64px;
+}
+
+.app-content {
+  padding: 24px;
+}
+
+.app-footer {
+  color: #6b7280;
+  background: transparent;
+  text-align: center;
+}
+
+.status-panel {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.loading-surface {
+  min-height: 180px;
+}
+
+.status-note {
+  display: block;
+  margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .app-content {
+    padding: 16px;
+  }
+
+  .app-header {
+    padding: 0 16px;
+  }
+}
