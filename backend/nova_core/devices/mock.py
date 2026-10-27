@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 from nova_core.devices.errors import (
     ActionFailedError,
@@ -174,12 +175,15 @@ class MockDeviceAdapter:
         }:
             event_type = DeviceEventType.SENSOR_UPDATED
         event = DeviceEvent(
+            id=str(uuid4()),
             event_type=event_type,
             source=self.adapter_id,
             subject_id=item.definition.external_id,
+            external_id=item.definition.external_id,
             payload={
                 "previous_state": previous.state.value,
                 "current_state": current.state.value,
+                "previous_attributes": previous.attributes,
                 "attributes": current.attributes,
             },
             occurred_at=self._clock(),

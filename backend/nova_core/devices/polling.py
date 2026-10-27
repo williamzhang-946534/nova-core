@@ -36,7 +36,7 @@ class DeviceStatePoller:
         self._adapter = adapter
         self._external_ids = list(dict.fromkeys(external_ids))
         self._id_resolver = id_resolver
-        self._previous: dict[str, tuple[DeviceStateName, str]] = {}
+        self._previous: dict[str, tuple[DeviceStateName, str, dict[str, object]]] = {}
 
     async def poll_once(self) -> list[DeviceEvent]:
         events: list[DeviceEvent] = []
@@ -54,6 +54,7 @@ class DeviceStatePoller:
                             event_type=DeviceEventType.DEVICE_UNAVAILABLE,
                             source=self._adapter.adapter_id,
                             subject_id=device_id,
+                            external_id=external_id,
                             payload={
                                 "previous_state": previous[0].value,
                                 "current_state": DeviceStateName.UNAVAILABLE.value,
@@ -64,12 +65,13 @@ class DeviceStatePoller:
                     self._previous[external_id] = (
                         DeviceStateName.UNAVAILABLE,
                         _attribute_fingerprint({}),
+                        {},
                     )
                 continue
 
             fingerprint = _attribute_fingerprint(current.attributes)
             previous = self._previous.get(external_id)
-            self._previous[external_id] = (current.state, fingerprint)
+            self._previous[external_id] = (current.state, fingerprint, dict(current.attributes))
             if previous is None:
                 continue
 
@@ -79,6 +81,7 @@ class DeviceStatePoller:
                         self._event(
                             DeviceEventType.DEVICE_UNAVAILABLE,
                             device_id,
+                            external_id,
                             previous,
                             current,
                             self._adapter.adapter_id,
@@ -90,6 +93,7 @@ class DeviceStatePoller:
                     self._event(
                         DeviceEventType.STATE_CHANGED,
                         device_id,
+                        external_id,
                         previous,
                         current,
                         self._adapter.adapter_id,
@@ -101,6 +105,7 @@ class DeviceStatePoller:
                     self._event(
                         DeviceEventType.SENSOR_UPDATED,
                         device_id,
+                        external_id,
                         previous,
                         current,
                         self._adapter.adapter_id,
@@ -121,7 +126,8 @@ class DeviceStatePoller:
     def _event(
         event_type: DeviceEventType,
         device_id: str,
-        previous: tuple[DeviceStateName, str],
+        external_id: str,
+        previous: tuple[DeviceStateName, str, dict[str, object]],
         current: DeviceState,
         source: str,
     ) -> DeviceEvent:
@@ -132,7 +138,9 @@ class DeviceStatePoller:
             payload={
                 "previous_state": previous[0].value,
                 "current_state": current.state.value,
+                "previous_attributes": previous[2],
                 "attributes": current.attributes,
             },
+            external_id=external_id,
             occurred_at=current.observed_at,
         )

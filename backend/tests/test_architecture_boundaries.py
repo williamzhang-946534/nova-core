@@ -30,7 +30,7 @@ def test_database_dependencies_stay_inside_persistence_boundary() -> None:
 
 
 def test_later_phase_modules_are_not_implemented_yet() -> None:
-    forbidden_directories = ("adapters", "agents", "events", "tools")
+    forbidden_directories = ("adapters", "agents", "tools")
     forbidden_modules = {"homeassistant"}
     allowed_httpx_file = Path("devices") / "home_assistant.py"
 

@@ -32,8 +32,10 @@ def test_poller_suppresses_initial_state_and_emits_normalized_changes() -> None:
     assert events[0].payload == {
         "previous_state": "off",
         "current_state": "on",
+        "previous_attributes": {},
         "attributes": {},
     }
+    assert events[0].external_id == "mock.switch.airer"
 
     assert asyncio.run(poller.poll_once()) == []
 

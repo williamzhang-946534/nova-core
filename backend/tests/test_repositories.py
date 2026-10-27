@@ -82,9 +82,18 @@ def test_repositories_save_and_query_domain_data(manager: DatabaseManager) -> No
         assert projection.states[0].state == "on"
         assert uow.devices.list(page=1, page_size=1) == [projection]
 
-        events = uow.events.list(event_type="device_state_changed", correlation_id="correlation-1")
+        events, total = uow.events.query(
+            event_type="device_state_changed",
+            correlation_id="correlation-1",
+        )
         assert [item.subject_id for item in events] == ["light.living"]
-        assert uow.events.list(page=1, page_size=1)[0].event_type == "sensor_updated"
+        assert total == 1
+        events, total = uow.events.query(order="asc")
+        assert total == 2
+        assert [item.event_type for item in events] == [
+            "device_state_changed",
+            "sensor_updated",
+        ]
 
         setting = uow.system_settings.get_by_key("home_assistant.configured")
         assert setting is not None

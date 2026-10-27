@@ -2,7 +2,7 @@
 
 Nova Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **架构已确认，Phase 3 设备接入已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry 和状态轮询；尚未连接真实 Home Assistant，AI Provider、Event Bus、Tool Executor、Agent Runtime 和业务页面尚未实现。
+当前项目处于 **架构已确认，Phase 4 环境状态与事件系统已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API 和 Environment Context；尚未连接真实 Home Assistant，AI Provider、Tool Executor、Agent Runtime 和业务页面尚未实现。
 
 ## 开发环境与常用命令
 
@@ -99,6 +99,20 @@ NOVA_DEVICE_POLL_INTERVAL_SECONDS=30
 
 当前自动化测试全部使用 Mock Adapter 和 Home Assistant HTTP 模拟响应，不需要真实 Home Assistant 或真实设备。
 
+### 环境事件配置与查询
+
+Phase 4 使用以下环境变量控制事件保留和默认环境名称：
+
+```text
+NOVA_EVENT_RETENTION_DAYS=180
+NOVA_DIAGNOSTIC_EVENT_RETENTION_DAYS=90
+NOVA_LONG_TERM_EVENT_TYPES=["task_started","task_completed","task_failed","tool_executed","user_confirmed"]
+NOVA_DEFAULT_ENVIRONMENT_NAME=home
+NOVA_API_TOKEN=
+```
+
+`GET /api/events` 和 `GET /api/events/{event_id}` 用于查询 Nova 自己持久化的领域事件，支持事件类型、来源、对象、correlation ID、时间范围、排序和分页过滤；除 `/health` 与 OpenAPI 文档外，事件 API 需要 Bearer Token。设备事件由统一 Device Adapter 转换为标准事件，只记录配置范围内 Nova 需要的状态变化，不复制 Home Assistant 完整历史。
+
 ## 当前定位
 
 Nova Core 不是 Home Assistant 的替代品，也不是单纯的聊天助手。它负责：
@@ -147,13 +161,12 @@ Home Assistant 负责设备集成、设备状态、设备控制和智能家居�
 
 ## 当前阶段结论
 
-Phase 3 已完成设备接入。用户确认本阶段成果后，后续按以下顺序推进：
+Phase 4 已完成环境状态与事件系统。用户确认本阶段成果后，后续按以下顺序推进：
 
-1. 环境状态与事件系统
-2. 工具注册与安全执行
-3. 任务系统与执行记录
-4. AI Provider 与 Agent Runtime
-5. Web 控制台
-6. Nova 上下文自动化与通知
+1. 工具注册与安全执行
+2. 任务系统与执行记录
+3. AI Provider 与 Agent Runtime
+4. Web 控制台
+5. Nova 上下文自动化与通知
 
 第一阶段必须提前确定设备抽象、事件格式、任务状态机、工具权限模型和执行验证机制。语音、视觉、机器人、多 Agent、分布式系统、自研智能家居协议和商业 SaaS 均暂不开发；机器人只保留在未来扩展文档中评估，不预留当前接口。

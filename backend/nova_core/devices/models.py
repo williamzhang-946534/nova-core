@@ -138,10 +138,12 @@ class AdapterHealth(BaseModel):
 class DeviceEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=36)
     event_type: DeviceEventType
     source: str = Field(min_length=1, max_length=100)
     subject_type: Literal["device"] = "device"
     subject_id: str = Field(min_length=1, max_length=255)
+    external_id: str | None = Field(default=None, min_length=1, max_length=255)
     payload: dict[str, Any] = Field(default_factory=dict)
     correlation_id: str | None = Field(default=None, max_length=100)
     occurred_at: datetime = Field(default_factory=utc_now)

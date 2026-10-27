@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     home_assistant_allowed_entity_ids: list[str] = Field(default_factory=list)
     home_assistant_write_enabled: bool = False
     device_poll_interval_seconds: int = Field(default=30, ge=1, le=3600)
+    event_retention_days: int = Field(default=180, ge=1, le=3650)
+    diagnostic_event_retention_days: int = Field(default=90, ge=1, le=3650)
+    long_term_event_types: list[str] = Field(
+        default_factory=lambda: [
+            "task_started",
+            "task_completed",
+            "task_failed",
+            "tool_executed",
+            "user_confirmed",
+        ]
+    )
+    default_environment_name: str = Field(default="home", min_length=1, max_length=255)
 
     model_config = SettingsConfigDict(
         env_prefix="NOVA_",

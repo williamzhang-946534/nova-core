@@ -67,3 +67,20 @@ def test_home_assistant_write_enabled_is_rejected_in_production() -> None:
             api_token="local-token",
             home_assistant_write_enabled=True,
         )
+
+
+def test_event_retention_settings_are_configurable() -> None:
+    test_settings = settings(
+        event_retention_days=120,
+        diagnostic_event_retention_days=45,
+        long_term_event_types=["task_started", "tool_executed"],
+        default_environment_name="apartment",
+    )
+
+    assert test_settings.event_retention_days == 120
+    assert test_settings.diagnostic_event_retention_days == 45
+    assert test_settings.long_term_event_types == ["task_started", "tool_executed"]
+    assert test_settings.default_environment_name == "apartment"
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        settings(event_retention_days=0)

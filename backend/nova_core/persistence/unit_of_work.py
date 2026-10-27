@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from nova_core.persistence.exceptions import RepositoryError
 from nova_core.persistence.repositories import (
     DeviceRepository,
+    EnvironmentRepository,
     EventRepository,
     SystemSettingRepository,
 )
@@ -19,12 +20,14 @@ class SqlAlchemyUnitOfWork:
         self._session: Session | None = None
         self.devices: DeviceRepository | None = None
         self.events: EventRepository | None = None
+        self.environments: EnvironmentRepository | None = None
         self.system_settings: SystemSettingRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
         self.devices = DeviceRepository(self._session)
         self.events = EventRepository(self._session)
+        self.environments = EnvironmentRepository(self._session)
         self.system_settings = SystemSettingRepository(self._session)
         return self
 
@@ -57,4 +60,5 @@ class SqlAlchemyUnitOfWork:
             self._session = None
             self.devices = None
             self.events = None
+            self.environments = None
             self.system_settings = None

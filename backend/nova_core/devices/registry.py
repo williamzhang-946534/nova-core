@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic import Field
@@ -160,6 +161,30 @@ class DeviceRegistry:
             )
 
         return await self._read(execute)
+
+    async def record_observed_state(
+        self,
+        device_id: str,
+        *,
+        state: str,
+        attributes: dict[str, Any],
+        source: str,
+        observed_at: datetime,
+    ) -> None:
+        def execute() -> None:
+            with self._unit_of_work_factory() as uow:
+                assert uow.devices is not None
+                uow.devices.record_observed_state(
+                    device_id,
+                    state=state,
+                    attributes=attributes,
+                    raw_state=None,
+                    source=source,
+                    observed_at=observed_at,
+                )
+                uow.commit()
+
+        await asyncio.to_thread(execute)
 
     async def update_profile(
         self,
