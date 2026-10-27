@@ -15,6 +15,14 @@ from nova_core.persistence.models import (
     EnvironmentSnapshot,
     Event,
     SystemSetting,
+    Tool,
+    ToolExecution,
+)
+from nova_core.tools.storage import (
+    StoredToolExecution,
+    ToolDefinitionRecord,
+    ToolExecutionCreate,
+    ToolExecutionUpdate,
 )
 
 ModelT = TypeVar("ModelT")
@@ -461,6 +469,115 @@ class EnvironmentRepository(BaseRepository[Environment]):
             return self._session.scalars(statement).first()
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read the latest environment snapshot.") from exc
+
+
+class ToolRepository(BaseRepository[Tool]):
+    model = Tool
+
+    def get_by_name(self, name: str) -> Tool | None:
+        try:
+            return self._session.scalars(select(Tool).where(Tool.name == name)).first()
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read a tool definition.") from exc
+
+    def upsert_definition(self, record: ToolDefinitionRecord) -> Tool:
+        try:
+            tool = self.get_by_name(record.name)
+            if tool is None:
+                tool = Tool(
+                    name=record.name,
+                    version=record.version,
+                    description=record.description,
+                    category=record.category,
+                    input_schema=record.input_schema,
+                    output_schema=record.output_schema,
+                    risk_level=record.risk_level,
+                    default_permission=record.default_permission,
+                    requires_confirmation=record.requires_confirmation,
+                    enabled=record.enabled,
+                )
+                self._session.add(tool)
+            else:
+                tool.version = record.version
+                tool.description = record.description
+                tool.category = record.category
+                tool.input_schema = record.input_schema
+                tool.output_schema = record.output_schema
+                tool.risk_level = record.risk_level
+                tool.default_permission = record.default_permission
+                tool.requires_confirmation = record.requires_confirmation
+                tool.enabled = record.enabled
+            self._session.flush()
+            return tool
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to save a tool definition.") from exc
+
+
+class ToolExecutionRepository(BaseRepository[ToolExecution]):
+    model = ToolExecution
+
+    def create_execution(self, record: ToolExecutionCreate) -> ToolExecution:
+        try:
+            tool = self._session.scalars(select(Tool).where(Tool.name == record.tool_name)).first()
+            if tool is None:
+                raise RepositoryError("The tool definition does not exist.")
+            entity = ToolExecution(
+                id=record.id,
+                tool_id=tool.id,
+                task_id=record.task_id,
+                task_step_id=record.task_step_id,
+                status=record.status,
+                input=record.input,
+                risk_level=record.risk_level,
+                permission_result=record.permission_result,
+                correlation_id=record.correlation_id,
+                started_at=record.started_at,
+            )
+            self._session.add(entity)
+            self._session.flush()
+            return entity
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to save a tool execution.") from exc
+
+    def update_execution(self, execution_id: str, record: ToolExecutionUpdate) -> ToolExecution:
+        try:
+            entity = self._session.get(ToolExecution, execution_id)
+            if entity is None:
+                raise RepositoryError("The tool execution does not exist.")
+            entity.status = record.status
+            entity.output = record.output
+            entity.validation = record.validation
+            entity.risk_level = record.risk_level
+            entity.permission_result = record.permission_result
+            entity.error = record.error
+            entity.completed_at = record.completed_at
+            entity.duration_ms = record.duration_ms
+            return entity
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to update a tool execution.") from exc
+
+    def get_execution(self, execution_id: str) -> StoredToolExecution | None:
+        try:
+            entity = self._session.get(ToolExecution, execution_id)
+            if entity is None:
+                return None
+            return StoredToolExecution(
+                id=entity.id,
+                tool_name=entity.tool.name,
+                status=entity.status,
+                input=entity.input,
+                output=entity.output,
+                validation=entity.validation,
+                risk_level=entity.risk_level,
+                permission_result=entity.permission_result,
+                error=entity.error,
+                correlation_id=entity.correlation_id,
+                started_at=entity.started_at,
+                completed_at=entity.completed_at,
+                duration_ms=entity.duration_ms,
+            )
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read a tool execution.") from exc
 
 
 class SystemSettingRepository(BaseRepository[SystemSetting]):

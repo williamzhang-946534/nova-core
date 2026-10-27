@@ -105,4 +105,4 @@ Nova Core 是个人 AI 环境感知与智能控制系统，核心价值是环境
 
 ## 当前阶段约束
 
-架构已确认，Phase 4 环境状态与事件系统已完成并等待用户验收。当前仓库允许维护 FastAPI/React 基础骨架、健康检查、配置、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、测试、格式化、环境变量示例和 Windows 启动配置。真实 Home Assistant 写操作必须保持默认关闭。未经用户确认进入下一阶段，不实现 Tool Executor、Safety Policy、Agent Runtime、AI Provider、自动化引擎或业务页面。
+架构已确认，Phase 5 安全工具执行已完成并等待用户验收。当前仓库允许维护 FastAPI/React 基础骨架、健康检查、配置、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计和状态验证、测试、格式化、环境变量示例和 Windows 启动配置。真实 Home Assistant 写操作必须保持默认关闭。未经用户确认进入下一阶段，不实现任务系统、Agent Runtime、AI Provider、自动化引擎或业务页面。

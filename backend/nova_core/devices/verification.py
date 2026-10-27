@@ -46,8 +46,12 @@ class DeviceStateVerifier:
         action: DeviceAction,
         before: DeviceState,
         actual: DeviceState,
+        *,
+        required_state: DeviceStateName | None = None,
     ) -> VerificationResult:
         expected_state, expected_attributes = self.expected(action, before)
+        if required_state is not None:
+            expected_state = required_state
         verified = actual.state == expected_state
         for key, value in expected_attributes.items():
             verified = verified and actual.attributes.get(key) == value

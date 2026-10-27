@@ -16,7 +16,12 @@ def unit_of_work() -> SqlAlchemyUnitOfWork:
     return SqlAlchemyUnitOfWork(database_manager.session_factory)
 
 
-app = create_app(settings, unit_of_work_factory=unit_of_work, initialize_event_runtime=True)
+app = create_app(
+    settings,
+    unit_of_work_factory=unit_of_work,
+    initialize_event_runtime=True,
+    initialize_tool_runtime=True,
+)
 app.state.database_manager = database_manager
 
 

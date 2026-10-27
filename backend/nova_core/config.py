@@ -7,6 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+ToolPermissionSetting = Literal[
+    "allow",
+    "allow_read_only",
+    "allow_low_risk",
+    "require_confirmation",
+    "deny",
+]
+
 
 class Settings(BaseSettings):
     """Runtime settings loaded from environment variables or a local .env file."""
@@ -33,6 +41,14 @@ class Settings(BaseSettings):
     home_assistant_allowed_entity_ids: list[str] = Field(default_factory=list)
     home_assistant_write_enabled: bool = False
     device_poll_interval_seconds: int = Field(default=30, ge=1, le=3600)
+    tool_confirmation_ttl_seconds: int = Field(default=300, ge=1, le=86400)
+    tool_permissions: dict[str, ToolPermissionSetting] = Field(
+        default_factory=lambda: {
+            "list_devices": "allow",
+            "get_device_state": "allow",
+            "control_device": "allow_low_risk",
+        }
+    )
     event_retention_days: int = Field(default=180, ge=1, le=3650)
     diagnostic_event_retention_days: int = Field(default=90, ge=1, le=3650)
     long_term_event_types: list[str] = Field(
@@ -89,8 +105,8 @@ class Settings(BaseSettings):
             raise ValueError("NOVA_API_TOKEN is required when NOVA_ENV is production")
         if self.environment == "production" and self.home_assistant_write_enabled:
             raise ValueError(
-                "NOVA_HOME_ASSISTANT_WRITE_ENABLED cannot be enabled before the safety "
-                "execution chain is complete"
+                "NOVA_HOME_ASSISTANT_WRITE_ENABLED can only be enabled for controlled "
+                "development validation"
             )
         return self
 

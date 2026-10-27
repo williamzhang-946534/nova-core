@@ -2,7 +2,7 @@
 
 Nova Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **架构已确认，Phase 4 环境状态与事件系统已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API 和 Environment Context；尚未连接真实 Home Assistant，AI Provider、Tool Executor、Agent Runtime 和业务页面尚未实现。
+当前项目处于 **架构已确认，Phase 5 安全工具执行已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计和状态验证；尚未连接真实 Home Assistant，AI Provider、Agent Runtime、任务系统和业务页面尚未实现。
 
 ## 开发环境与常用命令
 
@@ -95,7 +95,7 @@ NOVA_HOME_ASSISTANT_WRITE_ENABLED=false
 NOVA_DEVICE_POLL_INTERVAL_SECONDS=30
 ```
 
-`NOVA_HOME_ASSISTANT_ALLOWED_ENTITY_IDS` 支持 JSON 数组或逗号分隔列表；为空时不会导入任何 Home Assistant 实体。`NOVA_HOME_ASSISTANT_WRITE_ENABLED` 仅作为开发开关，默认必须保持 `false`，生产环境会直接拒绝开启。真实设备写入仍需等待 Safety Policy 和 Tool Executor 完成。
+`NOVA_HOME_ASSISTANT_ALLOWED_ENTITY_IDS` 支持 JSON 数组或逗号分隔列表；为空时不会导入任何 Home Assistant 实体。`NOVA_HOME_ASSISTANT_WRITE_ENABLED` 仅作为开发开关，默认必须保持 `false`，生产环境会直接拒绝开启。Safety Policy 和 Tool Executor 已完成后，真实设备写操作仍必须保持默认关闭，待用户逐项确认允许的实体和动作后再开启。
 
 当前自动化测试全部使用 Mock Adapter 和 Home Assistant HTTP 模拟响应，不需要真实 Home Assistant 或真实设备。
 
@@ -112,6 +112,17 @@ NOVA_API_TOKEN=
 ```
 
 `GET /api/events` 和 `GET /api/events/{event_id}` 用于查询 Nova 自己持久化的领域事件，支持事件类型、来源、对象、correlation ID、时间范围、排序和分页过滤；除 `/health` 与 OpenAPI 文档外，事件 API 需要 Bearer Token。设备事件由统一 Device Adapter 转换为标准事件，只记录配置范围内 Nova 需要的状态变化，不复制 Home Assistant 完整历史。
+
+### 安全工具配置与执行
+
+Phase 5 使用以下环境变量控制工具权限和确认有效期：
+
+```text
+NOVA_TOOL_CONFIRMATION_TTL_SECONDS=300
+NOVA_TOOL_PERMISSIONS={"list_devices":"allow","get_device_state":"allow","control_device":"allow_low_risk"}
+```
+
+工具目录由 `GET /api/tools` 查询，执行入口为 `POST /api/tools/{tool_name}/execute`；两个接口都需要 Bearer Token。执行链路包含 Schema 校验、工具注册检查、设备与动作权限检查、风险检查、必要的用户确认、执行、实际状态读取、结果验证和执行记录。`medium_risk` 动作必须使用首次返回的一次性确认 Token 重放同一请求，Token 会过期且绑定工具输入与任务；`high_risk` 动作默认拒绝。
 
 ## 当前定位
 
@@ -161,12 +172,11 @@ Home Assistant 负责设备集成、设备状态、设备控制和智能家居�
 
 ## 当前阶段结论
 
-Phase 4 已完成环境状态与事件系统。用户确认本阶段成果后，后续按以下顺序推进：
+Phase 5 已完成安全工具执行。用户确认本阶段成果后，后续按以下顺序推进：
 
-1. 工具注册与安全执行
-2. 任务系统与执行记录
-3. AI Provider 与 Agent Runtime
-4. Web 控制台
-5. Nova 上下文自动化与通知
+1. 任务系统与执行记录
+2. AI Provider 与 Agent Runtime
+3. Web 控制台
+4. Nova 上下文自动化与通知
 
 第一阶段必须提前确定设备抽象、事件格式、任务状态机、工具权限模型和执行验证机制。语音、视觉、机器人、多 Agent、分布式系统、自研智能家居协议和商业 SaaS 均暂不开发；机器人只保留在未来扩展文档中评估，不预留当前接口。

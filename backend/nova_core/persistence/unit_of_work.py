@@ -9,6 +9,8 @@ from nova_core.persistence.repositories import (
     EnvironmentRepository,
     EventRepository,
     SystemSettingRepository,
+    ToolExecutionRepository,
+    ToolRepository,
 )
 
 
@@ -22,6 +24,8 @@ class SqlAlchemyUnitOfWork:
         self.events: EventRepository | None = None
         self.environments: EnvironmentRepository | None = None
         self.system_settings: SystemSettingRepository | None = None
+        self.tools: ToolRepository | None = None
+        self.tool_executions: ToolExecutionRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -29,6 +33,8 @@ class SqlAlchemyUnitOfWork:
         self.events = EventRepository(self._session)
         self.environments = EnvironmentRepository(self._session)
         self.system_settings = SystemSettingRepository(self._session)
+        self.tools = ToolRepository(self._session)
+        self.tool_executions = ToolExecutionRepository(self._session)
         return self
 
     def __exit__(
@@ -62,3 +68,5 @@ class SqlAlchemyUnitOfWork:
             self.events = None
             self.environments = None
             self.system_settings = None
+            self.tools = None
+            self.tool_executions = None

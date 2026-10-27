@@ -12,14 +12,24 @@ from fastapi.responses import JSONResponse
 from nova_core import __version__
 from nova_core.api.events import router as events_router
 from nova_core.api.health import router as health_router
+from nova_core.api.tools import router as tools_router
 from nova_core.config import Settings, get_settings
+from nova_core.devices.home_assistant import HomeAssistantAdapter
+from nova_core.devices.mock import MockDeviceAdapter
+from nova_core.devices.registry import DeviceRegistry
+from nova_core.devices.service import DeviceApplicationService
 from nova_core.environment.context import EnvironmentContextService
 from nova_core.errors import ErrorResponse, NovaError
 from nova_core.events.bus import EventBus
 from nova_core.events.models import NovaEventType
 from nova_core.logging_config import correlation_id_var
 from nova_core.persistence.database import DatabaseManager
+from nova_core.persistence.tools import SqlToolExecutionStore
 from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from nova_core.tools.confirmation import ConfirmationService
+from nova_core.tools.executor import ToolExecutor
+from nova_core.tools.registry import build_default_tool_registry
+from nova_core.tools.safety import SafetyPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +40,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "initialize_event_runtime", False):
         environment_context = app.state.environment_context
         await environment_context.initialize()
+    if getattr(app.state, "initialize_tool_runtime", False):
+        device_registry = app.state.device_registry
+        mock_adapter = app.state.mock_device_adapter
+        await device_registry.sync_devices(mock_adapter)
+        home_assistant_adapter = getattr(app.state, "home_assistant_adapter", None)
+        if home_assistant_adapter is not None:
+            try:
+                await device_registry.sync_devices(home_assistant_adapter)
+            except Exception:
+                logger.exception("home_assistant_projection_sync_failed")
     yield
+    home_assistant_adapter = getattr(app.state, "home_assistant_adapter", None)
+    if home_assistant_adapter is not None:
+        await home_assistant_adapter.close()
     manager = getattr(app.state, "database_manager", None)
     if manager is not None:
         manager.dispose()
@@ -42,6 +65,7 @@ def create_app(
     *,
     unit_of_work_factory: Callable[[], SqlAlchemyUnitOfWork] | None = None,
     initialize_event_runtime: bool = False,
+    initialize_tool_runtime: bool = False,
 ) -> FastAPI:
     app_settings = settings or get_settings()
     database_manager: DatabaseManager | None = None
@@ -78,15 +102,53 @@ def create_app(
     app.state.event_bus = event_bus
     app.state.environment_context = environment_context
     app.state.initialize_event_runtime = initialize_event_runtime
+    mock_adapter = MockDeviceAdapter()
+    device_registry = DeviceRegistry(unit_of_work_factory)
+    home_assistant_adapter: HomeAssistantAdapter | None = None
+    if (
+        app_settings.home_assistant_url is not None
+        and app_settings.home_assistant_token is not None
+        and app_settings.home_assistant_allowed_entity_ids
+    ):
+        home_assistant_adapter = HomeAssistantAdapter(app_settings)
+    device_service = DeviceApplicationService(
+        device_registry,
+        {
+            adapter.adapter_id: adapter
+            for adapter in (mock_adapter, home_assistant_adapter)
+            if adapter is not None
+        },
+    )
+    tool_registry = build_default_tool_registry(device_service)
+    tool_executor = ToolExecutor(
+        registry=tool_registry,
+        safety_policy=SafetyPolicy(
+            device_service,
+            tool_permissions=app_settings.tool_permissions,
+        ),
+        confirmation_service=ConfirmationService(
+            ttl_seconds=app_settings.tool_confirmation_ttl_seconds,
+        ),
+        execution_store=SqlToolExecutionStore(unit_of_work_factory),
+        event_publisher=event_bus,
+    )
+    app.state.mock_device_adapter = mock_adapter
+    app.state.home_assistant_adapter = home_assistant_adapter
+    app.state.device_registry = device_registry
+    app.state.device_service = device_service
+    app.state.tool_registry = tool_registry
+    app.state.tool_executor = tool_executor
+    app.state.initialize_tool_runtime = initialize_tool_runtime
     app.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
     )
     app.include_router(health_router)
     app.include_router(events_router)
+    app.include_router(tools_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:

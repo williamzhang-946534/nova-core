@@ -30,8 +30,7 @@ def test_database_dependencies_stay_inside_persistence_boundary() -> None:
 
 
 def test_later_phase_modules_are_not_implemented_yet() -> None:
-    forbidden_directories = ("adapters", "agents", "tools")
-    forbidden_modules = {"homeassistant"}
+    forbidden_directories = ("adapters", "agents")
     allowed_httpx_file = Path("devices") / "home_assistant.py"
 
     for path in PACKAGE_ROOT.rglob("*.py"):
@@ -41,4 +40,15 @@ def test_later_phase_modules_are_not_implemented_yet() -> None:
         modules = imported_modules(path.read_text(encoding="utf-8"))
         if relative == allowed_httpx_file:
             modules.discard("httpx")
-        assert not modules & forbidden_modules, f"{path} imports a later-phase dependency"
+        assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
+
+
+def test_tool_system_stays_behind_device_and_persistence_ports() -> None:
+    tools_root = PACKAGE_ROOT / "tools"
+    for path in tools_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        modules = imported_modules(source)
+        assert "httpx" not in modules, f"{path} imports HTTP directly"
+        assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
+        assert "nova_core.devices.home_assistant" not in source
+        assert "nova_core.persistence" not in source
