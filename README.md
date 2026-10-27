@@ -2,7 +2,7 @@
 
 Nova Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **架构已确认，Phase 2 数据与配置已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复和 Windows 启动配置；Home Assistant、AI Provider 和业务页面尚未实现。
+当前项目处于 **架构已确认，Phase 3 设备接入已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry 和状态轮询；尚未连接真实 Home Assistant，AI Provider、Event Bus、Tool Executor、Agent Runtime 和业务页面尚未实现。
 
 ## 开发环境与常用命令
 
@@ -82,6 +82,23 @@ npm run format:check
 ```
 真实环境变量从根目录 `.env` 读取；可从 `.env.example` 复制后修改，不要提交 `.env`。
 
+### 设备接入配置
+
+Phase 3 使用以下环境变量控制 Home Assistant 访问：
+
+```text
+NOVA_HOME_ASSISTANT_URL=
+NOVA_HOME_ASSISTANT_TOKEN=
+NOVA_HOME_ASSISTANT_TIMEOUT_SECONDS=10
+NOVA_HOME_ASSISTANT_ALLOWED_ENTITY_IDS=[]
+NOVA_HOME_ASSISTANT_WRITE_ENABLED=false
+NOVA_DEVICE_POLL_INTERVAL_SECONDS=30
+```
+
+`NOVA_HOME_ASSISTANT_ALLOWED_ENTITY_IDS` 支持 JSON 数组或逗号分隔列表；为空时不会导入任何 Home Assistant 实体。`NOVA_HOME_ASSISTANT_WRITE_ENABLED` 仅作为开发开关，默认必须保持 `false`，生产环境会直接拒绝开启。真实设备写入仍需等待 Safety Policy 和 Tool Executor 完成。
+
+当前自动化测试全部使用 Mock Adapter 和 Home Assistant HTTP 模拟响应，不需要真实 Home Assistant 或真实设备。
+
 ## 当前定位
 
 Nova Core 不是 Home Assistant 的替代品，也不是单纯的聊天助手。它负责：
@@ -103,7 +120,7 @@ Home Assistant 负责设备集成、设备状态、设备控制和智能家居�
 - 前端：React + TypeScript + Vite + Ant Design + React Router + TanStack Query
 - 架构：Windows 本地运行的模块化单体
 - AI：统一 Provider 适配层，第一阶段优先支持兼容 OpenAI API 格式的模型接口
-- 设备：第一阶段只实现 Home Assistant Adapter，并设计 Mock Device Adapter 用于测试
+- 设备：第一阶段实现 Home Assistant Adapter 和 Mock Device Adapter，业务侧只依赖统一 Device Adapter 接口
 
 ## 文档索引
 
@@ -130,14 +147,13 @@ Home Assistant 负责设备集成、设备状态、设备控制和智能家居�
 
 ## 当前阶段结论
 
-Phase 2 已完成数据与配置。用户确认本阶段成果后，Phase 3 起按以下顺序推进：
+Phase 3 已完成设备接入。用户确认本阶段成果后，后续按以下顺序推进：
 
-1. 设备适配层接口与 Home Assistant Adapter
-2. 环境状态与事件系统
-3. 工具注册与安全执行
-4. 任务系统与执行记录
-5. AI Provider 与 Agent Runtime
-6. Web 控制台
-7. Nova 上下文自动化与通知
+1. 环境状态与事件系统
+2. 工具注册与安全执行
+3. 任务系统与执行记录
+4. AI Provider 与 Agent Runtime
+5. Web 控制台
+6. Nova 上下文自动化与通知
 
 第一阶段必须提前确定设备抽象、事件格式、任务状态机、工具权限模型和执行验证机制。语音、视觉、机器人、多 Agent、分布式系统、自研智能家居协议和商业 SaaS 均暂不开发；机器人只保留在未来扩展文档中评估，不预留当前接口。

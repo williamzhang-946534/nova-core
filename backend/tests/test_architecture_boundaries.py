@@ -31,11 +31,14 @@ def test_database_dependencies_stay_inside_persistence_boundary() -> None:
 
 def test_later_phase_modules_are_not_implemented_yet() -> None:
     forbidden_directories = ("adapters", "agents", "events", "tools")
-    forbidden_modules = {"httpx", "homeassistant"}
+    forbidden_modules = {"homeassistant"}
+    allowed_httpx_file = Path("devices") / "home_assistant.py"
 
     for path in PACKAGE_ROOT.rglob("*.py"):
         relative = path.relative_to(PACKAGE_ROOT)
         assert relative.parts[0] not in forbidden_directories, f"Unexpected module: {path}"
 
         modules = imported_modules(path.read_text(encoding="utf-8"))
+        if relative == allowed_httpx_file:
+            modules.discard("httpx")
         assert not modules & forbidden_modules, f"{path} imports a later-phase dependency"

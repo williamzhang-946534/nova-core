@@ -44,3 +44,26 @@ def test_production_requires_a_non_empty_api_token() -> None:
     test_settings = settings(environment="production", api_token=" local-token ")
     assert test_settings.api_token is not None
     assert test_settings.api_token.get_secret_value() == " local-token "
+
+
+def test_home_assistant_defaults_are_safe_and_allowlist_is_parseable() -> None:
+    test_settings = settings(home_assistant_allowed_entity_ids="light.living_room, switch.airer")
+
+    assert test_settings.home_assistant_url is None
+    assert test_settings.home_assistant_token is None
+    assert test_settings.home_assistant_timeout_seconds == 10.0
+    assert test_settings.home_assistant_allowed_entity_ids == [
+        "light.living_room",
+        "switch.airer",
+    ]
+    assert test_settings.home_assistant_write_enabled is False
+    assert test_settings.device_poll_interval_seconds == 30
+
+
+def test_home_assistant_write_enabled_is_rejected_in_production() -> None:
+    with pytest.raises(ValidationError, match="HOME_ASSISTANT_WRITE_ENABLED"):
+        settings(
+            environment="production",
+            api_token="local-token",
+            home_assistant_write_enabled=True,
+        )
