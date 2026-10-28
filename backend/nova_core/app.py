@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from nova_core import __version__
 from nova_core.api.events import router as events_router
 from nova_core.api.health import router as health_router
+from nova_core.api.tasks import router as tasks_router
 from nova_core.api.tools import router as tools_router
 from nova_core.config import Settings, get_settings
 from nova_core.devices.home_assistant import HomeAssistantAdapter
@@ -26,6 +27,7 @@ from nova_core.logging_config import correlation_id_var
 from nova_core.persistence.database import DatabaseManager
 from nova_core.persistence.tools import SqlToolExecutionStore
 from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from nova_core.tasks.service import TaskService
 from nova_core.tools.confirmation import ConfirmationService
 from nova_core.tools.executor import ToolExecutor
 from nova_core.tools.registry import build_default_tool_registry
@@ -138,6 +140,7 @@ def create_app(
     app.state.device_service = device_service
     app.state.tool_registry = tool_registry
     app.state.tool_executor = tool_executor
+    app.state.task_service = TaskService(unit_of_work_factory, tool_executor, event_bus)
     app.state.initialize_tool_runtime = initialize_tool_runtime
     app.add_middleware(
         CORSMiddleware,
@@ -149,6 +152,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(events_router)
     app.include_router(tools_router)
+    app.include_router(tasks_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:

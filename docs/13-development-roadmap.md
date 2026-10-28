@@ -225,6 +225,10 @@
 6. 任务历史完整。
 7. correlation ID 可追踪。
 
+### 当前完成情况
+
+Phase 6 已按最小可用范围完成并等待用户验收。实现包含 Task/TaskStep Repository、任务和步骤状态机、显式计划保存、顺序步骤执行、失败传播、取消、执行超时、等待确认超时、历史分页查询、任务事件和 correlation ID 贯穿。TaskStep 统一通过既有 Tool Executor 调用工具，未复制设备执行逻辑，也未绕过 Safety Policy。测试使用显式任务输入、Mock Device Adapter 和真实 Tool Executor 闭环。
+
 ## Phase 7：AI Agent
 
 ### 目标
@@ -414,6 +418,6 @@ Nova 能完成：
 
 ## 第一阶段开始建议
 
-Nova Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统和安全工具执行基础。下一阶段应从任务系统开始，继续保持小模块和明确安全边界。
+Nova Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统、安全工具执行和任务系统基础。下一阶段应从 AI Provider 与 Agent Runtime 开始，继续保持小模块和明确安全边界。
 
-Phase 5 已完成 Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证和 Mock 闭环。真实 Home Assistant 写操作保持默认关闭。Phase 5 等待用户验收，确认后才进入 Phase 6 任务系统。
+Phase 6 已完成显式任务计划、TaskStep 执行、任务历史、失败、取消、超时和任务事件。真实 Home Assistant 写操作保持默认关闭。Phase 6 等待用户验收，确认后才进入 Phase 7 AI Agent。

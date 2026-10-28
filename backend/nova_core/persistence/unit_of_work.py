@@ -12,6 +12,7 @@ from nova_core.persistence.repositories import (
     ToolExecutionRepository,
     ToolRepository,
 )
+from nova_core.persistence.tasks import TaskRepository
 
 
 class SqlAlchemyUnitOfWork:
@@ -26,6 +27,7 @@ class SqlAlchemyUnitOfWork:
         self.system_settings: SystemSettingRepository | None = None
         self.tools: ToolRepository | None = None
         self.tool_executions: ToolExecutionRepository | None = None
+        self.tasks: TaskRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -35,6 +37,7 @@ class SqlAlchemyUnitOfWork:
         self.system_settings = SystemSettingRepository(self._session)
         self.tools = ToolRepository(self._session)
         self.tool_executions = ToolExecutionRepository(self._session)
+        self.tasks = TaskRepository(self._session)
         return self
 
     def __exit__(
@@ -70,3 +73,4 @@ class SqlAlchemyUnitOfWork:
             self.system_settings = None
             self.tools = None
             self.tool_executions = None
+            self.tasks = None

@@ -52,3 +52,32 @@ def test_tool_system_stays_behind_device_and_persistence_ports() -> None:
         assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
         assert "nova_core.devices.home_assistant" not in source
         assert "nova_core.persistence" not in source
+
+
+def test_task_system_uses_tool_executor_and_persistence_ports() -> None:
+    tasks_root = PACKAGE_ROOT / "tasks"
+    assert list(tasks_root.rglob("*.py"))
+    for path in tasks_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        modules = imported_modules(source)
+        assert "httpx" not in modules, f"{path} imports HTTP directly"
+        assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
+        assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
+        assert "nova_core.devices" not in source, f"{path} imports a device adapter directly"
+        assert "nova_core.persistence" not in source, f"{path} imports persistence directly"
+
+
+def test_task_steps_call_the_tool_executor_port() -> None:
+    source = (PACKAGE_ROOT / "tasks" / "service.py").read_text(encoding="utf-8")
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+        and isinstance(node.func.value, ast.Attribute)
+        and node.func.value.attr == "_tool_executor"
+        and isinstance(node.func.value.value, ast.Name)
+        and node.func.value.value.id == "self"
+    ]
+    assert calls

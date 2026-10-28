@@ -2,7 +2,7 @@
 
 Nova Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **架构已确认，Phase 5 安全工具执行已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计和状态验证；尚未连接真实 Home Assistant，AI Provider、Agent Runtime、任务系统和业务页面尚未实现。
+当前项目处于 **架构已确认，Phase 6 任务系统已完成（待用户验收）** 状态。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、显式任务计划执行、任务历史、任务事件和 correlation ID 追踪；尚未连接真实 Home Assistant，AI Provider、Agent Runtime、自动化引擎、通知系统和业务页面尚未实现。
 
 ## 开发环境与常用命令
 
@@ -124,6 +124,19 @@ NOVA_TOOL_PERMISSIONS={"list_devices":"allow","get_device_state":"allow","contro
 
 工具目录由 `GET /api/tools` 查询，执行入口为 `POST /api/tools/{tool_name}/execute`；两个接口都需要 Bearer Token。执行链路包含 Schema 校验、工具注册检查、设备与动作权限检查、风险检查、必要的用户确认、执行、实际状态读取、结果验证和执行记录。`medium_risk` 动作必须使用首次返回的一次性确认 Token 重放同一请求，Token 会过期且绑定工具输入与任务；`high_risk` 动作默认拒绝。
 
+### 任务系统与执行记录
+
+Phase 6 提供显式计划的最小任务系统。`POST /api/tasks` 创建并按顺序执行 TaskStep；每个步骤必须经过既有 Tool Executor，因此继续受 Tool Registry、Safety Policy、用户确认、执行审计和状态验证约束。请求可包含 `task_type`、`title`、`steps` 和 `timeout_seconds`，并可用 `X-Correlation-ID` 关联 API 请求、任务、步骤、工具执行和领域事件。
+
+任务查询入口：
+
+- `GET /api/tasks`：按状态、类型、会话和时间范围分页查询任务历史。
+- `GET /api/tasks/{task_id}`：查看任务、TaskStep、工具执行记录、验证结果和错误。
+- `POST /api/tasks/{task_id}/confirm`：确认或拒绝等待确认的任务步骤。
+- `POST /api/tasks/{task_id}/cancel`：取消未完成任务及其未完成步骤。
+
+需要确认时，创建响应会返回一次性 `confirmation_token`，任务进入 `waiting_confirmation`；确认 Token 只在本次响应中出现，计划中保存 SHA-256 摘要，重复确认按已使用 Token 幂等处理。任务执行失败会将当前步骤标记为 `failed` 并取消后续步骤；执行超时将任务标记为 `failed`、步骤标记为 `timed_out`；等待确认超时或用户拒绝会将任务和步骤标记为 `cancelled`。本阶段不包含 AI 自主规划，任务输入必须由调用方显式提供。
+
 ## 当前定位
 
 Nova Core 不是 Home Assistant 的替代品，也不是单纯的聊天助手。它负责：
@@ -172,11 +185,10 @@ Home Assistant 负责设备集成、设备状态、设备控制和智能家居�
 
 ## 当前阶段结论
 
-Phase 5 已完成安全工具执行。用户确认本阶段成果后，后续按以下顺序推进：
+Phase 6 已完成显式任务系统与执行记录。用户确认本阶段成果后，后续按以下顺序推进：
 
-1. 任务系统与执行记录
-2. AI Provider 与 Agent Runtime
-3. Web 控制台
-4. Nova 上下文自动化与通知
+1. AI Provider 与 Agent Runtime
+2. Web 控制台
+3. Nova 上下文自动化与通知
 
 第一阶段必须提前确定设备抽象、事件格式、任务状态机、工具权限模型和执行验证机制。语音、视觉、机器人、多 Agent、分布式系统、自研智能家居协议和商业 SaaS 均暂不开发；机器人只保留在未来扩展文档中评估，不预留当前接口。

@@ -5,12 +5,12 @@
 | 项目 | 状态 |
 | --- | --- |
 | 项目目录 | `E:\williamzhang\zzh\zzh-personal-project\nova` |
-| 当前阶段 | Phase 5 安全工具执行已完成（待用户验收） |
-| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计与状态验证已初始化 |
+| 当前阶段 | Phase 6 任务系统已完成（待用户验收） |
+| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、历史查询与任务事件已初始化 |
 | 架构确认 | 已确认 |
 | 第一阶段运行环境 | Windows 11 本地 |
 
-本文档集是 Nova Core 的架构基线。架构已获得确认，Phase 5 已完成安全工具执行代码；自动化测试使用 Home Assistant 模拟响应和 Mock Device Adapter，尚未连接真实 Home Assistant，也不包含 AI Provider、任务系统或业务功能。
+本文档集是 Nova Core 的架构基线。架构已获得确认，Phase 6 已完成任务系统代码；自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter 和显式任务计划，尚未连接真实 Home Assistant，也不包含 AI Provider、Agent Runtime、自动化引擎、通知系统或业务功能。
 
 ## 项目背景
 
@@ -125,4 +125,4 @@ Nova Core 应采用 Windows 本地运行的模块化单体架构。第一阶段�
 3. Agent 只产生候选意图和计划，不接触数据库实现、SQL 或设备协议客户端。
 4. 机器人只在 [15-future-extension.md](15-future-extension.md) 中作为远期方向记录，当前模块清单和接口设计中没有机器人模块。
 
-Phase 5 完成后等待用户验收。真实 Home Assistant 写操作保持默认关闭；未经用户确认，不应进入 Phase 6 任务系统或后续业务功能开发。
+Phase 6 完成后等待用户验收。真实 Home Assistant 写操作保持默认关闭；未经用户确认，不应进入 Phase 7 AI Agent 或后续业务功能开发。
