@@ -226,6 +226,7 @@ def test_tools_api_requires_auth_and_executes_mock_tool(tmp_path: Path) -> None:
         assert catalog.status_code == 200
         assert [item["name"] for item in catalog.json()["data"]] == [
             "list_devices",
+            "get_environment_state",
             "get_device_state",
             "control_device",
         ]

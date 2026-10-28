@@ -247,6 +247,41 @@
 
 ## 对话 API
 
+Phase 7 实现最小无状态对话入口；不创建或持久化 Conversation、Message 或 Memory 记录。
+
+### `POST /api/chat`
+
+需要 Bearer Token。
+
+请求：
+
+```json
+{
+  "message": "打开客厅灯",
+  "client_request_id": "client-uuid"
+}
+```
+
+响应：
+
+```json
+{
+  "data": {
+    "status": "completed",
+    "reply": "Device device-uuid is on (verified).",
+    "intent": "device_control",
+    "task_id": "task-uuid",
+    "provider_log_id": "provider-log-uuid",
+    "correlation_id": "correlation-uuid",
+    "client_request_id": "client-uuid"
+  }
+}
+```
+
+低风险动作被配置为需要确认时，`status` 为 `waiting_confirmation`，响应包含一次性 `confirmation_token` 和确认摘要；后续仍使用任务确认 API。Provider 超时、非法 JSON、非法候选计划、未知工具、非法参数和模型拒绝均返回失败状态，不创建任务或报告成功。
+
+以下 Conversation API 是后续 Web 控制台和记忆阶段的规划，Phase 7 尚未实现。
+
 ### `GET /api/conversations`
 
 查询对话列表。

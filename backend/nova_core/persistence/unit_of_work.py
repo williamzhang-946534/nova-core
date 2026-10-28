@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from nova_core.persistence.exceptions import RepositoryError
+from nova_core.persistence.provider_logs import ProviderLogRepository
 from nova_core.persistence.repositories import (
     DeviceRepository,
     EnvironmentRepository,
@@ -28,6 +29,7 @@ class SqlAlchemyUnitOfWork:
         self.tools: ToolRepository | None = None
         self.tool_executions: ToolExecutionRepository | None = None
         self.tasks: TaskRepository | None = None
+        self.provider_logs: ProviderLogRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -38,6 +40,7 @@ class SqlAlchemyUnitOfWork:
         self.tools = ToolRepository(self._session)
         self.tool_executions = ToolExecutionRepository(self._session)
         self.tasks = TaskRepository(self._session)
+        self.provider_logs = ProviderLogRepository(self._session)
         return self
 
     def __exit__(
@@ -74,3 +77,4 @@ class SqlAlchemyUnitOfWork:
             self.tools = None
             self.tool_executions = None
             self.tasks = None
+            self.provider_logs = None

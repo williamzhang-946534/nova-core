@@ -96,6 +96,48 @@ class GetDeviceStateOutput(BaseModel):
     observed_at: datetime
 
 
+class GetEnvironmentStateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    area: str | None = Field(default=None, min_length=1, max_length=255)
+    include_devices: bool = True
+    include_recent_events: bool = True
+
+
+class EnvironmentDeviceSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str
+    name: str
+    device_type: str
+    area: str | None
+    state: str
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    updated_at: datetime
+
+
+class EnvironmentSensorSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str
+    sensor_type: str
+    value: float | int | bool | str
+    unit: str | None = None
+    updated_at: datetime
+
+
+class GetEnvironmentStateOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment_id: str | None = None
+    environment_name: str
+    updated_at: datetime
+    devices: list[EnvironmentDeviceSummary] = Field(default_factory=list)
+    sensors: list[EnvironmentSensorSummary] = Field(default_factory=list)
+    areas: dict[str, dict[str, int | list[str]]] = Field(default_factory=dict)
+    recent_events: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class ControlDeviceInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

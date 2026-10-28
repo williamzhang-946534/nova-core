@@ -8,8 +8,18 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import SecretStr
 
 from nova_core import __version__
+from nova_core.agent_runtime.models import AgentEnvironmentSnapshot
+from nova_core.agent_runtime.runtime import AgentRuntime
+from nova_core.ai.mock import MockAIProvider
+from nova_core.ai.openai_compatible import (
+    OpenAICompatibleProvider,
+    OpenAICompatibleProviderConfig,
+)
+from nova_core.ai.provider import AIProvider
+from nova_core.api.agent import router as agent_router
 from nova_core.api.events import router as events_router
 from nova_core.api.health import router as health_router
 from nova_core.api.tasks import router as tasks_router
@@ -19,15 +29,17 @@ from nova_core.devices.home_assistant import HomeAssistantAdapter
 from nova_core.devices.mock import MockDeviceAdapter
 from nova_core.devices.registry import DeviceRegistry
 from nova_core.devices.service import DeviceApplicationService
-from nova_core.environment.context import EnvironmentContextService
+from nova_core.environment.context import EnvironmentContextService, area_summary
 from nova_core.errors import ErrorResponse, NovaError
 from nova_core.events.bus import EventBus
 from nova_core.events.models import NovaEventType
 from nova_core.logging_config import correlation_id_var
 from nova_core.persistence.database import DatabaseManager
+from nova_core.persistence.provider_logs import SqlProviderLogStore
 from nova_core.persistence.tools import SqlToolExecutionStore
 from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from nova_core.tasks.service import TaskService
+from nova_core.tools.catalog import RegistryToolCatalog
 from nova_core.tools.confirmation import ConfirmationService
 from nova_core.tools.executor import ToolExecutor
 from nova_core.tools.registry import build_default_tool_registry
@@ -53,6 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception:
                 logger.exception("home_assistant_projection_sync_failed")
     yield
+    provider = getattr(app.state, "ai_provider", None)
+    if provider is not None:
+        await provider.aclose()
     home_assistant_adapter = getattr(app.state, "home_assistant_adapter", None)
     if home_assistant_adapter is not None:
         await home_assistant_adapter.close()
@@ -66,6 +81,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     unit_of_work_factory: Callable[[], SqlAlchemyUnitOfWork] | None = None,
+    ai_provider: AIProvider | None = None,
     initialize_event_runtime: bool = False,
     initialize_tool_runtime: bool = False,
 ) -> FastAPI:
@@ -121,7 +137,10 @@ def create_app(
             if adapter is not None
         },
     )
-    tool_registry = build_default_tool_registry(device_service)
+    tool_registry = build_default_tool_registry(
+        device_service,
+        environment_state_provider=lambda: environment_context.state,
+    )
     tool_executor = ToolExecutor(
         registry=tool_registry,
         safety_policy=SafetyPolicy(
@@ -142,6 +161,48 @@ def create_app(
     app.state.tool_executor = tool_executor
     app.state.task_service = TaskService(unit_of_work_factory, tool_executor, event_bus)
     app.state.initialize_tool_runtime = initialize_tool_runtime
+    provider_log_store = SqlProviderLogStore(unit_of_work_factory)
+    if ai_provider is None:
+        if app_settings.ai_provider == "openai_compatible":
+            ai_provider = OpenAICompatibleProvider(
+                OpenAICompatibleProviderConfig(
+                    base_url=app_settings.ai_base_url or "",
+                    model=app_settings.ai_model or "",
+                    api_key=app_settings.ai_api_key or SecretStr(""),
+                    timeout_seconds=app_settings.ai_timeout_seconds,
+                    max_retries=app_settings.ai_max_retries,
+                    structured_output_mode=app_settings.ai_structured_output_mode,
+                    retry_backoff_seconds=app_settings.ai_retry_backoff_seconds,
+                ),
+                provider_log_store,
+            )
+        else:
+            ai_provider = MockAIProvider(provider_log_store)
+    else:
+        ai_provider = ai_provider
+
+    async def environment_snapshot() -> AgentEnvironmentSnapshot:
+        state = environment_context.state
+        return AgentEnvironmentSnapshot(
+            environment_name=state.environment_name,
+            updated_at=state.updated_at,
+            devices=[device.model_dump(mode="json") for device in state.devices.values()],
+            sensors=[sensor.model_dump(mode="json") for sensor in state.sensors.values()],
+            areas=area_summary(state),
+        )
+
+    agent_runtime = AgentRuntime(
+        provider=ai_provider,
+        task_system=app.state.task_service,
+        tool_catalog=RegistryToolCatalog(
+            tool_registry,
+            permissions=app_settings.tool_permissions,
+        ),
+        environment_provider=environment_snapshot,
+        task_timeout_seconds=60.0,
+    )
+    app.state.ai_provider = ai_provider
+    app.state.agent_runtime = agent_runtime
     app.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.cors_origins,
@@ -153,6 +214,7 @@ def create_app(
     app.include_router(events_router)
     app.include_router(tools_router)
     app.include_router(tasks_router)
+    app.include_router(agent_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:

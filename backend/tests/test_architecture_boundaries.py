@@ -81,3 +81,43 @@ def test_task_steps_call_the_tool_executor_port() -> None:
         and node.func.value.value.id == "self"
     ]
     assert calls
+
+
+def test_agent_runtime_stays_behind_provider_task_and_catalog_ports() -> None:
+    agent_root = PACKAGE_ROOT / "agent_runtime"
+    assert list(agent_root.rglob("*.py"))
+    for path in agent_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        modules = imported_modules(source)
+        assert "httpx" not in modules, f"{path} imports HTTP directly"
+        assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
+        assert "alembic" not in modules, f"{path} imports Alembic directly"
+        assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
+        assert "nova_core.persistence" not in source, f"{path} imports persistence directly"
+        assert "nova_core.devices" not in source, f"{path} imports a device adapter directly"
+        assert "nova_core.tools.executor" not in source, f"{path} imports Tool Executor directly"
+        assert "nova_core.ai.openai_compatible" not in source, f"{path} imports a provider directly"
+
+
+def test_ai_provider_stays_behind_http_and_logging_ports() -> None:
+    ai_root = PACKAGE_ROOT / "ai"
+    assert list(ai_root.rglob("*.py"))
+    for path in ai_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        modules = imported_modules(source)
+        assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
+        assert "alembic" not in modules, f"{path} imports Alembic directly"
+        assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
+        assert "nova_core.persistence" not in source, f"{path} imports persistence directly"
+        assert "nova_core.devices" not in source, f"{path} imports a device adapter directly"
+        assert "nova_core.tasks" not in source, f"{path} imports task state directly"
+        if path.name != "openai_compatible.py":
+            assert "httpx" not in modules, f"{path} imports HTTP directly"
+
+
+def test_task_system_does_not_depend_on_ai_or_agent_runtime() -> None:
+    tasks_root = PACKAGE_ROOT / "tasks"
+    for path in tasks_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "nova_core.ai" not in source, f"{path} imports the AI layer directly"
+        assert "nova_core.agent_runtime" not in source, f"{path} imports Agent Runtime directly"

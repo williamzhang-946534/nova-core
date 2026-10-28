@@ -15,6 +15,8 @@ ToolPermissionSetting = Literal[
     "deny",
 ]
 
+AIStructuredOutputMode = Literal["json_schema", "json_object", "prompt_only"]
+
 
 class Settings(BaseSettings):
     """Runtime settings loaded from environment variables or a local .env file."""
@@ -46,6 +48,7 @@ class Settings(BaseSettings):
         default_factory=lambda: {
             "list_devices": "allow",
             "get_device_state": "allow",
+            "get_environment_state": "allow",
             "control_device": "allow_low_risk",
         }
     )
@@ -61,6 +64,14 @@ class Settings(BaseSettings):
         ]
     )
     default_environment_name: str = Field(default="home", min_length=1, max_length=255)
+    ai_provider: Literal["mock", "openai_compatible"] = "mock"
+    ai_base_url: str | None = None
+    ai_model: str | None = None
+    ai_api_key: SecretStr | None = None
+    ai_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    ai_max_retries: int = Field(default=2, ge=0, le=3)
+    ai_structured_output_mode: AIStructuredOutputMode = "json_schema"
+    ai_retry_backoff_seconds: float = Field(default=0.2, ge=0, le=10)
 
     model_config = SettingsConfigDict(
         env_prefix="NOVA_",
@@ -108,6 +119,28 @@ class Settings(BaseSettings):
                 "NOVA_HOME_ASSISTANT_WRITE_ENABLED can only be enabled for controlled "
                 "development validation"
             )
+        return self
+
+    @model_validator(mode="after")
+    def require_complete_openai_compatible_settings(self) -> "Settings":
+        if self.ai_provider != "openai_compatible":
+            return self
+        missing = [
+            name
+            for name, value in (
+                ("NOVA_AI_BASE_URL", self.ai_base_url),
+                ("NOVA_AI_MODEL", self.ai_model),
+            )
+            if value is None or not str(value).strip()
+        ]
+        if self.ai_api_key is None or not self.ai_api_key.get_secret_value().strip():
+            missing.append("NOVA_AI_API_KEY")
+        if missing:
+            raise ValueError(f"Missing OpenAI-compatible AI settings: {', '.join(missing)}")
+        if self.ai_base_url is not None and not self.ai_base_url.rstrip("/").startswith(
+            ("http://", "https://")
+        ):
+            raise ValueError("NOVA_AI_BASE_URL must be an HTTP URL")
         return self
 
     def resolve_path(self, path: Path) -> Path:

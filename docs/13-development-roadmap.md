@@ -257,6 +257,10 @@ Phase 6 已按最小可用范围完成并等待用户验收。实现包含 Task/
 6. Provider 超时不导致任务假成功。
 7. 可更换模型配置。
 
+### 当前完成情况
+
+Phase 7 已按最小可用范围完成并等待用户验收。实现包含统一 AI Provider Interface、OpenAI-compatible HTTP Provider、Base URL/模型/API Key/超时/有限重试配置、结构化输出模式与 400/422 降级、严格 JSON 解析、脱敏 Provider 日志、确定性 Mock Provider、意图与候选计划 Pydantic 校验、只读 Tool Catalog 投影、Task System 集成、工具结果摘要和明确失败处理。Agent 不导入 Repository、SQLAlchemy、数据库会话、Home Assistant 客户端或 Device Adapter；候选任务仍通过 TaskStep 和 Tool Executor 执行。自动化测试使用 Mock Provider，不依赖真实模型调用。本阶段不实现 Memory、会话持久化、Agent 自主规划、自动化引擎、通知系统或前端业务页面。
+
 ## Phase 8：Web 控制台
 
 ### 目标
@@ -418,6 +422,6 @@ Nova 能完成：
 
 ## 第一阶段开始建议
 
-Nova Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统、安全工具执行和任务系统基础。下一阶段应从 AI Provider 与 Agent Runtime 开始，继续保持小模块和明确安全边界。
+Nova Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统、安全工具执行、任务系统基础和 AI Agent 最小闭环。下一阶段应从 Web 控制台开始，继续保持小模块和明确安全边界。
 
-Phase 6 已完成显式任务计划、TaskStep 执行、任务历史、失败、取消、超时和任务事件。真实 Home Assistant 写操作保持默认关闭。Phase 6 等待用户验收，确认后才进入 Phase 7 AI Agent。
+Phase 7 已完成 AI Provider、Mock Provider、自然语言意图识别、候选计划校验和任务集成。真实 Home Assistant 写操作与真实模型调用保持默认关闭。Phase 7 等待用户验收，确认后才进入 Phase 8 Web 控制台。
