@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from nova_core.app import create_app
+from arvuno_core.app import create_app
 
 
 def test_request_validation_uses_standard_error_contract() -> None:

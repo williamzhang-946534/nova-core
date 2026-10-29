@@ -7,22 +7,22 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from nova_core.config import Settings
-from nova_core.events.bus import EventBus, normalize_datetime
-from nova_core.events.errors import EventPersistenceError, EventRecursionLimitExceeded
-from nova_core.events.models import (
+from arvuno_core.config import Settings
+from arvuno_core.events.bus import EventBus, normalize_datetime
+from arvuno_core.events.errors import EventPersistenceError, EventRecursionLimitExceeded
+from arvuno_core.events.models import (
+    ArvunoEvent,
+    ArvunoEventSource,
+    ArvunoEventType,
     DeviceStateChangedPayload,
     DeviceUnavailablePayload,
-    NovaEvent,
-    NovaEventSource,
-    NovaEventType,
     SensorUpdatedPayload,
 )
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.exceptions import RepositoryError
-from nova_core.persistence.models import Event
-from nova_core.persistence.repositories import EventRecordCreate
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.exceptions import RepositoryError
+from arvuno_core.persistence.models import Event
+from arvuno_core.persistence.repositories import EventRecordCreate
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def phase_settings(tmp_path: Path) -> Settings:
@@ -44,12 +44,12 @@ def manager(tmp_path: Path) -> DatabaseManager:
 
 
 def event(
-    event_type: NovaEventType = NovaEventType.DEVICE_STATE_CHANGED,
+    event_type: ArvunoEventType = ArvunoEventType.DEVICE_STATE_CHANGED,
     *,
     occurred_at: datetime | None = None,
-) -> NovaEvent:
+) -> ArvunoEvent:
     payload: object
-    if event_type == NovaEventType.SENSOR_UPDATED:
+    if event_type == ArvunoEventType.SENSOR_UPDATED:
         payload = SensorUpdatedPayload(
             device_id="device-1",
             sensor_type="temperature",
@@ -57,7 +57,7 @@ def event(
             unit="C",
             previous_value=24.0,
         )
-    elif event_type == NovaEventType.DEVICE_UNAVAILABLE:
+    elif event_type == ArvunoEventType.DEVICE_UNAVAILABLE:
         payload = DeviceUnavailablePayload(
             device_id="device-1",
             reason="The adapter reported unavailable.",
@@ -70,9 +70,9 @@ def event(
             current_state="on",
             attributes={"brightness": 80},
         )
-    return NovaEvent(
+    return ArvunoEvent(
         event_type=event_type,
-        source=NovaEventSource.MOCK_ADAPTER,
+        source=ArvunoEventSource.MOCK_ADAPTER,
         subject_type="device",
         subject_id="device-1",
         payload=payload,
@@ -90,14 +90,14 @@ def test_event_schema_normalizes_time_and_rejects_invalid_input() -> None:
     assert valid.correlation_id == "correlation-1"
 
     with pytest.raises(ValidationError, match="UTC offset"):
-        NovaEvent.model_validate(
+        ArvunoEvent.model_validate(
             {**event().model_dump(mode="json"), "occurred_at": datetime.now().isoformat()}
         )
 
     with pytest.raises(ValidationError, match="requires a SensorUpdatedPayload"):
-        NovaEvent(
-            event_type=NovaEventType.SENSOR_UPDATED,
-            source=NovaEventSource.MOCK_ADAPTER,
+        ArvunoEvent(
+            event_type=ArvunoEventType.SENSOR_UPDATED,
+            source=ArvunoEventSource.MOCK_ADAPTER,
             subject_type="device",
             subject_id="device-1",
             payload=DeviceStateChangedPayload(
@@ -108,9 +108,9 @@ def test_event_schema_normalizes_time_and_rejects_invalid_input() -> None:
         )
 
     with pytest.raises(ValidationError, match="payload.device_id must match"):
-        NovaEvent(
-            event_type=NovaEventType.DEVICE_UNAVAILABLE,
-            source=NovaEventSource.MOCK_ADAPTER,
+        ArvunoEvent(
+            event_type=ArvunoEventType.DEVICE_UNAVAILABLE,
+            source=ArvunoEventSource.MOCK_ADAPTER,
             subject_type="device",
             subject_id="other-device",
             payload=DeviceUnavailablePayload(
@@ -137,7 +137,7 @@ def test_event_bus_persists_before_dispatch_and_rejects_duplicate_ids(
     async def scenario() -> None:
         nonlocal event_id
         bus = EventBus(lambda: SqlAlchemyUnitOfWork(manager.session_factory))
-        received: list[NovaEvent] = []
+        received: list[ArvunoEvent] = []
         bus.subscribe(lambda item: received.append(item) or asyncio.sleep(0))
         item = event()
         event_id = item.id
@@ -162,16 +162,16 @@ def test_event_bus_isolates_and_logs_subscriber_failures(
     manager: DatabaseManager,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    async def failing_subscriber(_event: NovaEvent) -> None:
+    async def failing_subscriber(_event: ArvunoEvent) -> None:
         raise RuntimeError("expected subscriber failure")
 
     async def scenario() -> None:
         bus = EventBus(lambda: SqlAlchemyUnitOfWork(manager.session_factory))
-        received: list[NovaEvent] = []
+        received: list[ArvunoEvent] = []
         bus.subscribe(failing_subscriber)
         bus.subscribe(lambda item: received.append(item) or asyncio.sleep(0))
 
-        with caplog.at_level(logging.ERROR, logger="nova_core.events.bus"):
+        with caplog.at_level(logging.ERROR, logger="arvuno_core.events.bus"):
             await bus.publish(event())
 
         assert received
@@ -188,16 +188,16 @@ def test_event_bus_isolates_and_logs_subscriber_failures(
 def test_event_bus_filters_subscriptions(manager: DatabaseManager) -> None:
     async def scenario() -> None:
         bus = EventBus(lambda: SqlAlchemyUnitOfWork(manager.session_factory))
-        received: list[NovaEvent] = []
+        received: list[ArvunoEvent] = []
         bus.subscribe(
             lambda item: received.append(item) or asyncio.sleep(0),
-            event_types={NovaEventType.SENSOR_UPDATED.value},
+            event_types={ArvunoEventType.SENSOR_UPDATED.value},
         )
 
         await bus.publish(event())
-        await bus.publish(event(NovaEventType.SENSOR_UPDATED))
+        await bus.publish(event(ArvunoEventType.SENSOR_UPDATED))
 
-        assert [item.event_type for item in received] == [NovaEventType.SENSOR_UPDATED]
+        assert [item.event_type for item in received] == [ArvunoEventType.SENSOR_UPDATED]
 
     asyncio.run(scenario())
 
@@ -207,10 +207,10 @@ def test_event_bus_does_not_dispatch_when_persistence_fails(
 ) -> None:
     async def scenario() -> None:
         bus = EventBus(lambda: None)
-        received: list[NovaEvent] = []
+        received: list[ArvunoEvent] = []
         bus.subscribe(lambda item: received.append(item) or asyncio.sleep(0))
 
-        def fail_persistence(_event: NovaEvent) -> None:
+        def fail_persistence(_event: ArvunoEvent) -> None:
             raise RepositoryError("expected persistence failure")
 
         monkeypatch.setattr(bus, "_persist", fail_persistence)
@@ -229,18 +229,18 @@ def test_event_bus_stops_unbounded_recursive_publishing(
         bus = EventBus(lambda: SqlAlchemyUnitOfWork(manager.session_factory), max_publish_depth=1)
         attempts = 0
 
-        async def recursive_subscriber(_event: NovaEvent) -> None:
+        async def recursive_subscriber(_event: ArvunoEvent) -> None:
             nonlocal attempts
             attempts += 1
             next_type = (
-                NovaEventType.SENSOR_UPDATED
-                if _event.event_type == NovaEventType.DEVICE_STATE_CHANGED
-                else NovaEventType.DEVICE_STATE_CHANGED
+                ArvunoEventType.SENSOR_UPDATED
+                if _event.event_type == ArvunoEventType.DEVICE_STATE_CHANGED
+                else ArvunoEventType.DEVICE_STATE_CHANGED
             )
             await bus.publish(event(next_type))
 
         bus.subscribe(recursive_subscriber)
-        with caplog.at_level(logging.ERROR, logger="nova_core.events.bus"):
+        with caplog.at_level(logging.ERROR, logger="arvuno_core.events.bus"):
             await bus.publish(event())
 
         assert attempts == 2
@@ -324,6 +324,6 @@ def test_event_repository_wraps_duplicate_records(manager: DatabaseManager) -> N
 
 def test_event_ids_must_be_uuids() -> None:
     with pytest.raises(ValidationError):
-        NovaEvent.model_validate(
+        ArvunoEvent.model_validate(
             {**event().model_dump(mode="json"), "id": str(uuid4()) + "invalid"}
         )

@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from nova_core.config import Settings
-from nova_core.devices.mock import MockDeviceAdapter
-from nova_core.devices.models import DeviceStateName
-from nova_core.devices.registry import DeviceRegistry
-from nova_core.environment.context import EnvironmentContextService, area_summary
-from nova_core.environment.reconciliation import EnvironmentReconciler
-from nova_core.events.bus import EventBus
-from nova_core.events.service import DeviceEventService
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.config import Settings
+from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.models import DeviceStateName
+from arvuno_core.devices.registry import DeviceRegistry
+from arvuno_core.environment.context import EnvironmentContextService, area_summary
+from arvuno_core.environment.reconciliation import EnvironmentReconciler
+from arvuno_core.events.bus import EventBus
+from arvuno_core.events.service import DeviceEventService
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def phase_settings(tmp_path: Path) -> Settings:

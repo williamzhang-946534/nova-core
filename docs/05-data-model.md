@@ -2,11 +2,11 @@
 
 ## 设计原则
 
-1. 数据库模型服务于 Nova 领域，不复制 Home Assistant 内部结构。
-2. `devices` 是 Home Assistant 实体的轻量投影，不是完整设备注册表。只保存 Nova 需要的名称、区域、类型、能力摘要、别名和权限等信息。
+1. 数据库模型服务于 Arvuno 领域，不复制 Home Assistant 内部结构。
+2. `devices` 是 Home Assistant 实体的轻量投影，不是完整设备注册表。只保存 Arvuno 需要的名称、区域、类型、能力摘要、别名和权限等信息。
 3. 不复制 Home Assistant 的完整设备配置、协议元数据、设备发现结果或完整历史。
-4. `events` 只保存 Nova 上下文、任务、工具、审计和自动化所需事件，不是 Home Assistant 历史库的副本。
-5. `automations` 只建模少量需要 Nova 上下文的规则，不是通用自动化平台模型。
+4. `events` 只保存 Arvuno 上下文、任务、工具、审计和自动化所需事件，不是 Home Assistant 历史库的副本。
+5. `automations` 只建模少量需要 Arvuno 上下文的规则，不是通用自动化平台模型。
 6. API Schema、领域模型和数据库模型分离。
 7. 所有主键使用 UUID 字符串，便于未来分布式或迁移。
 8. 时间统一使用 UTC ISO-8601 字符串。
@@ -36,21 +36,21 @@ erDiagram
 
 ### 1. `devices`
 
-设备投影表，保存 Nova 需要的稳定设备信息。设备发现、完整注册信息、协议配置和完整历史仍由 Home Assistant 管理。
+设备投影表，保存 Arvuno 需要的稳定设备信息。设备发现、完整注册信息、协议配置和完整历史仍由 Home Assistant 管理。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| id | UUID PK | Nova 设备 ID |
+| id | UUID PK | Arvuno 设备 ID |
 | adapter_id | string | 适配器 ID，例如 `home_assistant`、`mock` |
 | external_id | string | 平台内实体或设备 ID |
 | name | string | 展示名称 |
 | normalized_name | string | 标准化名称，用于匹配 |
-| device_type | string | Nova 标准设备类型 |
+| device_type | string | Arvuno 标准设备类型 |
 | area | string nullable | 区域，例如客厅 |
 | manufacturer | string nullable | 厂商 |
 | model | string nullable | 型号 |
 | is_online | boolean | 最近一次已知在线状态 |
-| is_enabled | boolean | 是否允许 Nova 使用 |
+| is_enabled | boolean | 是否允许 Arvuno 使用 |
 | risk_level | string | 默认风险等级 |
 | capabilities | JSON | 能力描述 |
 | metadata | JSON | 适配器原始元数据摘要 |
@@ -62,7 +62,7 @@ erDiagram
 
 ### 2. `device_states`
 
-设备状态快照，用于 Nova 的短期上下文、任务验证和问题排查。只保存已配置纳入 Nova 的实体，不替代 Home Assistant 历史记录。
+设备状态快照，用于 Arvuno 的短期上下文、任务验证和问题排查。只保存已配置纳入 Arvuno 的实体，不替代 Home Assistant 历史记录。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -120,7 +120,7 @@ erDiagram
 
 ### 6. `events`
 
-Nova 领域事件表，只保存上下文、任务、工具、审计和自动化所需事件。
+Arvuno 领域事件表，只保存上下文、任务、工具、审计和自动化所需事件。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -306,7 +306,7 @@ AI 模型调用日志。
 
 ### 16. `automations`
 
-Nova 上下文自动化规则。普通定时、状态触发和场景自动化优先由 Home Assistant 提供，本表不做通用自动化平台模型。
+Arvuno 上下文自动化规则。普通定时、状态触发和场景自动化优先由 Home Assistant 提供，本表不做通用自动化平台模型。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -315,10 +315,10 @@ Nova 上下文自动化规则。普通定时、状态触发和场景自动化优
 | description | string nullable | 描述 |
 | enabled | boolean | 是否启用 |
 | trigger | JSON | 触发条件 |
-| condition | JSON | 附加条件 |
+| condition | JSON | 附加条件列表，API 模型名为 `conditions`，应用层按 AND 评估 |
 | action | JSON | 执行动作 |
 | cooldown_seconds | integer | 冷却时间 |
-| risk_level | string | 风险等级 |
+| risk_level | string | 动作风险等级，通知动作固定为 `read_only`，工具动作来自配置 |
 | created_at | timestamp | 创建时间 |
 | updated_at | timestamp | 更新时间 |
 
@@ -334,6 +334,7 @@ Nova 上下文自动化规则。普通定时、状态触发和场景自动化优
 | status | string | 执行状态 |
 | matched_context | JSON | 命中上下文 |
 | task_id | UUID nullable | 创建的任务 |
+| notification_id | string nullable | 通知动作生成的通知 ID；当前从 `matched_context.notification_id` 还原，不单独建列 |
 | error | JSON nullable | 错误 |
 | started_at | timestamp | 开始时间 |
 | completed_at | timestamp nullable | 完成时间 |
@@ -397,6 +398,28 @@ running → cancelled
 | completed | 成功完成 |
 | failed | 执行失败 |
 | cancelled | 已取消 |
+
+## 自动化执行状态机
+
+```text
+condition_not_met
+cooldown_skipped
+risk_rejected
+
+running → completed
+running → failed
+```
+
+状态说明：
+
+| 状态 | 含义 |
+| --- | --- |
+| running | 条件与风险检查通过，动作正在执行 |
+| completed | 通知已生成，或自动化任务成功完成 |
+| failed | 动作或任务执行失败 |
+| cooldown_skipped | 规则命中但处于冷却期 |
+| condition_not_met | 触发事件匹配但附加条件不满足 |
+| risk_rejected | 工具动作风险高于 `low_risk`，在任务创建前拒绝 |
 
 ## 事件类型
 

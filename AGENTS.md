@@ -1,10 +1,10 @@
-# Nova Core 开发规范
+# Arvuno Core 开发规范
 
-本文档约束 Nova Core 的长期开发方式。除非用户明确要求改变，否则后续开发和文档更新都应遵循这些规则。
+本文档约束 Arvuno Core 的长期开发方式。除非用户明确要求改变，否则后续开发和文档更新都应遵循这些规则。
 
 ## 项目边界
 
-Nova Core 是个人 AI 环境感知与智能控制系统，核心价值是环境理解、任务规划、受控执行、结果验证和长期记忆。
+Arvuno Core 是个人 AI 环境感知与智能控制系统，核心价值是环境理解、任务规划、受控执行、结果验证和长期记忆。
 
 ### 当前方向
 
@@ -41,13 +41,13 @@ Nova Core 是个人 AI 环境感知与智能控制系统，核心价值是环境
 
 1. 采用模块化单体架构，第一阶段所有核心模块运行在同一个后端进程中。
 2. 不使用微服务、Kubernetes、Kafka、RabbitMQ 或其他高运维成本基础设施。
-3. Home Assistant 是设备接入基础设施，不是 Nova Core 的核心领域模型。
+3. Home Assistant 是设备接入基础设施，不是 Arvuno Core 的核心领域模型。
 4. AI 模型不能直接访问数据库、执行系统命令或调用设备适配器。
 5. 所有设备操作必须通过 Tool Registry、Safety Policy 和 Tool Executor。
 6. Agent 负责理解和规划，Tool Executor 负责校验、授权、执行和验证。
-7. Device Registry 只保存 Nova 需要的设备投影、别名和权限，不复制 Home Assistant 的设备管理、设备发现或协议适配能力。
-8. Event System 只保存 Nova 的上下文、任务、审计和自动化所需事件，不复制 Home Assistant 的完整历史库。
-9. 简单设备自动化优先使用 Home Assistant；Nova 自动化只做需要 AI 上下文、任务记录或多设备编排的场景。
+7. Device Registry 只保存 Arvuno 需要的设备投影、别名和权限，不复制 Home Assistant 的设备管理、设备发现或协议适配能力。
+8. Event System 只保存 Arvuno 的上下文、任务、审计和自动化所需事件，不复制 Home Assistant 的完整历史库。
+9. 简单设备自动化优先使用 Home Assistant；Arvuno 自动化只做需要 AI 上下文、任务记录或多设备编排的场景。
 10. Agent Runtime 不得导入 Repository、SQLAlchemy 模型、Home Assistant HTTP 客户端或设备 Adapter。
 11. 事件系统第一阶段使用应用内事件总线，事件必须持久化。
 12. 数据访问必须经过仓储或清晰的 Repository 边界，业务逻辑不能直接依赖 SQLite 特有能力。
@@ -75,7 +75,7 @@ Nova Core 是个人 AI 环境感知与智能控制系统，核心价值是环境
 - 状态管理保持简单，优先使用 TanStack Query 管理服务端状态。
 - 组件职责清晰，避免把所有逻辑写在单个页面组件中。
 - 错误、加载和空状态必须显式处理。
-- Web 控制台定位是 Nova Core 的运行与观测界面，不是 Home Assistant Dashboard。
+- Web 控制台定位是 Arvuno Core 的运行与观测界面，不是 Home Assistant Dashboard。
 
 ## 安全规范
 
@@ -105,4 +105,8 @@ Nova Core 是个人 AI 环境感知与智能控制系统，核心价值是环境
 
 ## 当前阶段约束
 
-架构已确认，Phase 7 AI Provider 与 Agent Runtime 已完成并等待用户验收。当前仓库允许维护 FastAPI/React 基础骨架、健康检查、配置、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行与历史、AI Provider、Agent Runtime、测试、格式化、环境变量示例和 Windows 启动配置。真实 Home Assistant 写操作必须保持默认关闭。任务步骤必须通过 Tool Executor 执行；AI 输出只能是候选意图和计划。未经用户确认进入下一阶段，不实现 Memory、会话持久化、Agent 自主规划、自动化引擎、通知系统或业务页面。
+架构已确认，Phase 9 自动化与通知已完成并等待用户验收。当前仓库允许维护 FastAPI/React 基础骨架、健康检查、配置、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行与历史、AI Provider、Agent Runtime、Web 控制台核心页面、少量 Arvuno 上下文自动化、Web Console 站内通知、测试、格式化、环境变量示例和 Windows 启动配置。真实 Home Assistant 写操作必须保持默认关闭。任务步骤必须通过 Tool Executor 执行；AI 输出只能是候选意图和计划；自动化工具动作必须通过 Task System 和 Tool Executor 执行，且只允许 read_only 或 low_risk 自动执行；前端只能访问 Arvuno API，不得直接请求 Home Assistant 或伪造执行结果。未经用户确认进入下一阶段，不实现 Memory、会话持久化、Agent 自主规划、通用自动化编辑器、多渠道通知或 WebSocket 推送。
+
+## 命名规范
+
+项目英文名为 Arvuno，产品标识为 Arvuno Core。后端 Python 包使用 `arvuno_core`，环境变量使用 `ARVUNO_` 前缀，前端包名为 `arvuno-frontend`。当前仓库物理目录和 Git 远程名称不因产品改名自动调整；旧 Nova 数据文件和环境变量不会被自动迁移。

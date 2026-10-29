@@ -5,18 +5,18 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from nova_core.app import create_app
-from nova_core.config import Settings
-from nova_core.events.models import (
+from arvuno_core.app import create_app
+from arvuno_core.config import Settings
+from arvuno_core.events.models import (
+    ArvunoEvent,
+    ArvunoEventSource,
+    ArvunoEventType,
     DeviceStateChangedPayload,
-    NovaEvent,
-    NovaEventSource,
-    NovaEventType,
     SensorUpdatedPayload,
 )
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.repositories import EventRecordCreate
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.repositories import EventRecordCreate
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def api_settings(tmp_path: Path) -> Settings:
@@ -40,13 +40,13 @@ def manager(tmp_path: Path) -> DatabaseManager:
 
 def stored_event(
     *,
-    event_type: NovaEventType,
+    event_type: ArvunoEventType,
     subject_id: str,
     correlation_id: str,
     occurred_at: datetime,
 ) -> EventRecordCreate:
     payload: object
-    if event_type == NovaEventType.SENSOR_UPDATED:
+    if event_type == ArvunoEventType.SENSOR_UPDATED:
         payload = SensorUpdatedPayload(
             device_id=subject_id,
             sensor_type="temperature",
@@ -61,9 +61,9 @@ def stored_event(
             current_state="on",
             attributes={},
         )
-    event = NovaEvent(
+    event = ArvunoEvent(
         event_type=event_type,
-        source=NovaEventSource.MOCK_ADAPTER,
+        source=ArvunoEventSource.MOCK_ADAPTER,
         subject_type="device",
         subject_id=subject_id,
         payload=payload,
@@ -88,19 +88,19 @@ def seed_events(manager: DatabaseManager) -> tuple[list[str], datetime, datetime
     start = datetime(2026, 10, 27, 10, 0, tzinfo=UTC)
     records = [
         stored_event(
-            event_type=NovaEventType.DEVICE_STATE_CHANGED,
+            event_type=ArvunoEventType.DEVICE_STATE_CHANGED,
             subject_id="device-1",
             correlation_id="correlation-1",
             occurred_at=start,
         ),
         stored_event(
-            event_type=NovaEventType.SENSOR_UPDATED,
+            event_type=ArvunoEventType.SENSOR_UPDATED,
             subject_id="device-2",
             correlation_id="correlation-2",
             occurred_at=start + timedelta(minutes=1),
         ),
         stored_event(
-            event_type=NovaEventType.DEVICE_STATE_CHANGED,
+            event_type=ArvunoEventType.DEVICE_STATE_CHANGED,
             subject_id="device-3",
             correlation_id="correlation-3",
             occurred_at=start + timedelta(minutes=2),

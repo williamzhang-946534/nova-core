@@ -15,7 +15,7 @@
 | --- | --- |
 | Home Assistant Token | 可控制家庭设备 |
 | AI API Key | 财务和账号风险 |
-| Nova API Token | 可访问控制台和设备操作 |
+| Arvuno API Token | 可访问控制台和设备操作 |
 | 设备控制能力 | 影响物理环境 |
 | 用户偏好和记忆 | 隐私风险 |
 | 任务和事件历史 | 行为隐私风险 |
@@ -248,7 +248,7 @@ AI Provider 输出必须经过：
 
 - API Key
 - Home Assistant Token
-- Nova API Token
+- Arvuno API Token
 - 未脱敏的敏感配置
 
 ## 备份安全

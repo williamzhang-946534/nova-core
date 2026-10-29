@@ -1,8 +1,8 @@
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from nova_core.config import get_settings
-from nova_core.persistence.models import Base
+from arvuno_core.config import get_settings
+from arvuno_core.persistence.models import Base
 
 config = context.config
 

@@ -142,7 +142,7 @@ Agent 请求模型返回结构化 JSON，例如：
 | `smalltalk` | 普通对话 | read_only |
 | `unsupported` | 不支持的目标 | 不执行 |
 
-`automation_request` 只允许描述少量 Nova 上下文规则。普通定时、状态触发和场景自动化应继续由用户在 Home Assistant 中配置，Nova 不提供通用自动化编辑器。
+`automation_request` 只允许描述少量 Arvuno 上下文规则。普通定时、状态触发和场景自动化应继续由用户在 Home Assistant 中配置，Arvuno 不提供通用自动化编辑器。
 
 ## Tool Registry
 

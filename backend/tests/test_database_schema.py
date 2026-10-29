@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy import inspect
 
-from nova_core.config import Settings
-from nova_core.persistence import database as database_module
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.exceptions import DatabaseConnectionError, MigrationError
+from arvuno_core.config import Settings
+from arvuno_core.persistence import database as database_module
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.exceptions import DatabaseConnectionError, MigrationError
 
 EXPECTED_TABLES = {
     "automation_runs",

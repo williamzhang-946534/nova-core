@@ -2,7 +2,7 @@
 
 ## 测试目标
 
-Nova 的测试重点不是追求覆盖率数字，而是保证真实世界操作链路安全可靠：
+Arvuno 的测试重点不是追求覆盖率数字，而是保证真实世界操作链路安全可靠：
 
 1. 状态模型正确。
 2. 已入库事件不因订阅者异常丢失。
@@ -78,16 +78,18 @@ Nova 的测试重点不是追求覆盖率数字，而是保证真实世界操作
 
 ### 规则引擎
 
-只测试 Nova 需要的少量上下文规则，不测试通用场景编辑器能力。
+只测试 Arvuno 需要的少量上下文规则，不测试通用场景编辑器能力。
 
 必须测试：
 
 - 触发条件匹配。
-- 多条件 AND/OR。
+- 多条件 AND。
 - 数值比较。
 - 字符串比较。
 - 冷却时间。
 - 规则禁用。
+- 高风险拒绝。
+- 工具失败通知。
 - 异常输入。
 
 ### 权限判断
@@ -227,6 +229,20 @@ Nova 的测试重点不是追求覆盖率数字，而是保证真实世界操作
 6. correlation ID。
 7. WebSocket 订阅。
 8. 幂等键。
+
+### 自动化与通知
+
+使用 Mock 事件和 Mock 设备测试：
+
+1. 条件命中后生成通知和执行记录。
+2. 条件不满足只记录 `condition_not_met`。
+3. 禁用规则不执行、不产生通知。
+4. 冷却期内重复触发记录 `cooldown_skipped`。
+5. 并发重复触发按规则串行处理。
+6. 低风险工具动作通过 Task System、TaskStep、Tool Executor 和 Safety Policy 执行。
+7. 工具或任务失败记录 `failed` 并生成任务失败通知。
+8. 中高风险动作在任务创建前记录 `risk_rejected`。
+9. 自动化、事件、任务、工具执行和通知可通过 correlation ID 或关联 ID 追踪。
 
 ## Mock Device Adapter
 
@@ -397,6 +413,7 @@ Mock Adapter 是第一阶段的必需组件，不只是测试工具。
 | Safety Policy | 必须高覆盖 |
 | Tool Executor | 必须高覆盖 |
 | Task State Machine | 必须高覆盖 |
+| Automation Run State | 必须高覆盖 |
 | Event Schema | 必须高覆盖 |
 | Device Adapter | 错误场景必须覆盖 |
 | Memory | 授权和删除必须覆盖 |

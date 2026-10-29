@@ -9,20 +9,20 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from nova_core.agent_runtime.models import AgentEnvironmentSnapshot
-from nova_core.agent_runtime.runtime import AgentRuntime
-from nova_core.ai.errors import ProviderTimeoutError
-from nova_core.ai.mock import MockAIProvider
-from nova_core.ai.storage import ProviderLogFinish, ProviderLogStart
-from nova_core.app import create_app
-from nova_core.config import Settings
-from nova_core.devices.mock import MockDeviceAdapter
-from nova_core.devices.registry import DeviceRegistry
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.models import ProviderLog
-from nova_core.persistence.provider_logs import SqlProviderLogStore
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from nova_core.tasks.models import (
+from arvuno_core.agent_runtime.models import AgentEnvironmentSnapshot
+from arvuno_core.agent_runtime.runtime import AgentRuntime
+from arvuno_core.ai.errors import ProviderTimeoutError
+from arvuno_core.ai.mock import MockAIProvider
+from arvuno_core.ai.storage import ProviderLogFinish, ProviderLogStart
+from arvuno_core.app import create_app
+from arvuno_core.config import Settings
+from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.registry import DeviceRegistry
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.models import ProviderLog
+from arvuno_core.persistence.provider_logs import SqlProviderLogStore
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.tasks.models import (
     StoredTaskDetail,
     StoredTaskStep,
     TaskCreate,
@@ -30,8 +30,8 @@ from nova_core.tasks.models import (
     TaskStatus,
     TaskStepStatus,
 )
-from nova_core.tools.catalog import RegistryToolCatalog
-from nova_core.tools.registry import build_default_tool_registry
+from arvuno_core.tools.catalog import RegistryToolCatalog
+from arvuno_core.tools.registry import build_default_tool_registry
 
 
 @dataclass

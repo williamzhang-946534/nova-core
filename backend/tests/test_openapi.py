@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from nova_core.app import create_app
+from arvuno_core.app import create_app
 
 
 def test_openapi_document_is_available_and_contains_health() -> None:

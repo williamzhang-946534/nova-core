@@ -1,8 +1,8 @@
 import asyncio
 
-from nova_core.devices.mock import MockDeviceAdapter
-from nova_core.devices.models import DeviceStateName
-from nova_core.devices.polling import DeviceStatePoller
+from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.models import DeviceStateName
+from arvuno_core.devices.polling import DeviceStatePoller
 
 
 def test_poller_suppresses_initial_state_and_emits_normalized_changes() -> None:
@@ -11,7 +11,7 @@ def test_poller_suppresses_initial_state_and_emits_normalized_changes() -> None:
 
     async def resolver(adapter_id: str, external_id: str) -> str:
         resolver_calls.append((adapter_id, external_id))
-        return f"nova-{external_id}"
+        return f"arvuno-{external_id}"
 
     poller = DeviceStatePoller(
         adapter,
@@ -28,7 +28,7 @@ def test_poller_suppresses_initial_state_and_emits_normalized_changes() -> None:
     events = asyncio.run(poller.poll_once())
     assert [event.event_type.value for event in events] == ["device_state_changed"]
     assert events[0].source == "mock"
-    assert events[0].subject_id == "nova-mock.switch.airer"
+    assert events[0].subject_id == "arvuno-mock.switch.airer"
     assert events[0].payload == {
         "previous_state": "off",
         "current_state": "on",
@@ -44,7 +44,7 @@ def test_poller_emits_unavailable_for_offline_device() -> None:
     adapter = MockDeviceAdapter()
 
     async def resolver(_adapter_id: str, _external_id: str) -> str:
-        return "nova-device"
+        return "arvuno-device"
 
     poller = DeviceStatePoller(adapter, ["mock.switch.airer"], resolver)
     asyncio.run(poller.poll_once())

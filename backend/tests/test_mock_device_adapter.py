@@ -2,15 +2,15 @@ import asyncio
 
 import pytest
 
-from nova_core.devices.errors import (
+from arvuno_core.devices.errors import (
     ActionFailedError,
     AdapterTimeoutError,
     DeviceUnavailableError,
     DeviceWriteDisabledError,
     StateVerificationFailedError,
 )
-from nova_core.devices.mock import MockDeviceAdapter
-from nova_core.devices.models import DeviceAction, DeviceEvent, DeviceStateName
+from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.models import DeviceAction, DeviceEvent, DeviceStateName
 
 
 def run(coroutine):

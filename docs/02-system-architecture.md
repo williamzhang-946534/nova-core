@@ -2,7 +2,7 @@
 
 ## 架构结论
 
-Nova Core 第一阶段采用 **Windows 本地运行的模块化单体架构**。
+Arvuno Core 第一阶段采用 **Windows 本地运行的模块化单体架构**。
 
 推荐运行形态：
 
@@ -75,15 +75,15 @@ Nova Core 第一阶段采用 **Windows 本地运行的模块化单体架构**。
 
 | 能力 | 归属 | 第一阶段处理 |
 | --- | --- | --- |
-| 设备集成、发现、协议适配 | Home Assistant | Nova 不实现 |
-| 设备实体注册和维护 | Home Assistant | Nova 只保存轻量投影和权限映射 |
-| 设备当前状态和控制 | Home Assistant | Nova 通过 Adapter 读取和调用 |
-| 完整设备历史和图表 | Home Assistant | Nova 不复制 |
-| 基础自动化和场景 | Home Assistant 优先 | Nova 不做通用替代品 |
-| 任务、工具、执行验证审计 | Nova | 独立保存 |
-| AI 上下文和用户偏好 | Nova | 独立保存 |
+| 设备集成、发现、协议适配 | Home Assistant | Arvuno 不实现 |
+| 设备实体注册和维护 | Home Assistant | Arvuno 只保存轻量投影和权限映射 |
+| 设备当前状态和控制 | Home Assistant | Arvuno 通过 Adapter 读取和调用 |
+| 完整设备历史和图表 | Home Assistant | Arvuno 不复制 |
+| 基础自动化和场景 | Home Assistant 优先 | Arvuno 不做通用替代品 |
+| 任务、工具、执行验证审计 | Arvuno | 独立保存 |
+| AI 上下文和用户偏好 | Arvuno | 独立保存 |
 
-Event System 只订阅 Nova 需要的实体和事件类型，不默认保存 Home Assistant 全量事件。
+Event System 只订阅 Arvuno 需要的实体和事件类型，不默认保存 Home Assistant 全量事件。
 
 ## 核心运行流程
 
@@ -170,7 +170,7 @@ sequenceDiagram
 
 ## Home Assistant 集成边界
 
-Nova 通过 Home Assistant Adapter 访问 Home Assistant，而不是让业务模块直接依赖它的 API。
+Arvuno 通过 Home Assistant Adapter 访问 Home Assistant，而不是让业务模块直接依赖它的 API。
 
 ```text
 Home Assistant REST / WebSocket API
@@ -184,7 +184,7 @@ Device Registry / Environment Context / Tools
 
 这个适配层承担防腐层职责：
 
-- 将 Home Assistant 实体转换为 Nova 的 Device 模型。
+- 将 Home Assistant 实体转换为 Arvuno 的 Device 模型。
 - 将状态字符串转换为标准状态类型。
 - 将服务调用转换为 Device Action。
 - 统一错误类型。
@@ -227,7 +227,7 @@ Windows 11
 
 ```text
 Windows 11
-├── Nova Backend 进程
+├── Arvuno Backend 进程
 │   ├── REST API
 │   ├── WebSocket
 │   ├── 静态前端资源（可选）

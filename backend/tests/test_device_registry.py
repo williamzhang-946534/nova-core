@@ -1,14 +1,14 @@
 from pathlib import Path
 
-from nova_core.config import Settings
-from nova_core.devices.mock import MockDeviceAdapter
-from nova_core.devices.models import (
+from arvuno_core.config import Settings
+from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.models import (
     Device,
     DeviceRiskLevel,
 )
-from nova_core.devices.registry import DeviceRegistry
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.devices.registry import DeviceRegistry
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 class SelectiveMockAdapter(MockDeviceAdapter):

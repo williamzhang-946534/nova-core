@@ -2,7 +2,7 @@
 
 ## 目标
 
-Event System 为 Nova 提供统一的事件表示、分发、持久化和查询能力。它连接配置范围内的设备状态、环境上下文、任务执行、自动化规则和 Web 控制台，不复制 Home Assistant 完整事件历史。
+Event System 为 Arvuno 提供统一的事件表示、分发、持久化和查询能力。它连接配置范围内的设备状态、环境上下文、任务执行、自动化规则和 Web 控制台，不复制 Home Assistant 完整事件历史。
 
 第一阶段使用应用内事件总线，不引入 Kafka、RabbitMQ 或云消息服务。
 
@@ -30,7 +30,7 @@ Event System 为 Nova 提供统一的事件表示、分发、持久化和查询�
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| id | 是 | UUID，由 Nova 生成 |
+| id | 是 | UUID，由 Arvuno 生成 |
 | event_type | 是 | 标准事件类型 |
 | source | 是 | 事件来源 |
 | subject_type | 否 | 关联对象类型 |
@@ -38,7 +38,7 @@ Event System 为 Nova 提供统一的事件表示、分发、持久化和查询�
 | payload | 是 | 事件内容，结构由 event_type 决定 |
 | correlation_id | 否 | 贯穿请求、任务和工具执行的关联 ID |
 | occurred_at | 是 | 事件发生时间，UTC |
-| created_at | 是 | Nova 写入时间，UTC |
+| created_at | 是 | Arvuno 写入时间，UTC |
 
 ## 标准事件类型
 
@@ -50,7 +50,7 @@ Payload：
 
 | 字段 | 说明 |
 | --- | --- |
-| device_id | Nova 设备 ID |
+| device_id | Arvuno 设备 ID |
 | previous_state | 前状态 |
 | current_state | 当前状态 |
 | attributes | 标准化属性 |
@@ -175,7 +175,7 @@ Payload：
 
 ```python
 class EventBus(Protocol):
-    async def publish(self, event: NovaEvent) -> None: ...
+    async def publish(self, event: ArvunoEvent) -> None: ...
 
     def subscribe(
         self,
@@ -197,7 +197,7 @@ class EventBus(Protocol):
 
 ```text
 Device Adapter / Task / Tool / Automation
-→ 构造 NovaEvent
+→ 构造 ArvunoEvent
 → Pydantic 校验
 → 写入 events 表
 → Event Bus 分发
@@ -249,10 +249,8 @@ Device Adapter / Task / Tool / Automation
 订阅：
 
 - `task_failed`
-- `automation_triggered`
-- `device_unavailable`
 
-职责是生成用户通知。
+职责是生成任务失败通知。自动化规则中的普通通知动作由 Automation Service 在规则执行时直接写入 Web Console 通知记录；`device_unavailable` 提醒仍需要显式配置对应自动化规则，不会默认给每个离线事件发送通知。
 
 ## Correlation ID
 
@@ -283,7 +281,7 @@ correlation ID 用于串起完整执行链：
 | 时间 | 含义 |
 | --- | --- |
 | occurred_at | 事件在现实世界或来源系统发生的时间 |
-| created_at | Nova 写入事件的时间 |
+| created_at | Arvuno 写入事件的时间 |
 
 两者都必须使用 UTC。排序默认使用 `occurred_at`，必要时可用 `created_at` 排查处理延迟。
 

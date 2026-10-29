@@ -29,8 +29,8 @@ if ($LASTEXITCODE -ne 0) {
 
 $pythonPath = "$backendRoot$([System.IO.Path]::PathSeparator)$env:PYTHONPATH"
 $env:PYTHONPATH = $pythonPath.TrimEnd([System.IO.Path]::PathSeparator)
-& $venvPython -m nova_core.persistence init
+& $venvPython -m arvuno_core.persistence init
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
-& $venvPython -m nova_core.main
+& $venvPython -m arvuno_core.main

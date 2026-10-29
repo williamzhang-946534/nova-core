@@ -1,3 +1,5 @@
+import { getApiBaseUrl, getApiToken } from "@/utils/api-config";
+
 export interface ApiErrorBody {
   code?: unknown;
   message?: unknown;
@@ -19,42 +21,59 @@ export class ApiError extends Error {
 }
 
 function readErrorField(payload: unknown): ApiErrorBody {
-  if (typeof payload !== "object" || payload === null) {
+  if (!isRecordPayload(payload)) {
     return {};
   }
-
-  const error = (payload as Record<string, unknown>).error;
-  if (typeof error !== "object" || error === null) {
+  const error = payload.error;
+  if (!isRecordPayload(error)) {
     return {};
   }
-
-  const candidate = error as Record<string, unknown>;
   return {
-    code: candidate.code,
-    message: candidate.message,
-    correlationId: candidate.correlation_id,
+    code: error.code,
+    message: error.message,
+    correlationId: error.correlation_id,
   };
+}
+
+function isRecordPayload(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function errorMessage(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0 ? value : fallback;
 }
 
+export interface RequestJsonOptions {
+  method?: "GET" | "POST" | "PATCH";
+  body?: unknown;
+}
+
 export async function requestJson<T>(
   path: string,
   validate: (value: unknown) => value is T,
+  options: RequestJsonOptions = {},
 ): Promise<T> {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-  let response: Response;
+  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
+  const token = getApiToken();
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (token.length > 0) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
+  let response: Response;
   try {
-    response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-      headers: {
-        Accept: "application/json",
-      },
+    response = await fetch(`${baseUrl}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
-    throw new ApiError("无法连接后端服务。", { status: 0 });
+    throw new ApiError("无法连接 Arvuno 后端服务。", { status: 0 });
   }
 
   let payload: unknown;
@@ -76,6 +95,18 @@ export async function requestJson<T>(
   if (!validate(payload)) {
     throw new ApiError("后端返回的数据格式不符合预期。", { status: response.status });
   }
-
   return payload;
+}
+
+export function buildQueryString(
+  parameters: Record<string, string | number | boolean | undefined>,
+) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(parameters)) {
+    if (value !== undefined && `${value}`.length > 0) {
+      query.set(key, `${value}`);
+    }
+  }
+  const encoded = query.toString();
+  return encoded.length > 0 ? `?${encoded}` : "";
 }

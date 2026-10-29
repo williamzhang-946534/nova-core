@@ -4,7 +4,7 @@
 
 原设计建议中的 API Gateway 在第一阶段改名为 **API Layer**。当前系统只有一个后端进程和一组前端用户，不需要独立网关。API Layer 只负责协议转换、认证、参数校验、错误封装和 OpenAPI 文档。
 
-Device Adapter 与 Device Registry 合并为 **Device Integration** 域，但内部保留独立接口。适配器负责外部平台通信，注册表只保存 Nova 需要的设备投影、别名、能力摘要和权限，不复制 Home Assistant 的设备管理平台。
+Device Adapter 与 Device Registry 合并为 **Device Integration** 域，但内部保留独立接口。适配器负责外部平台通信，注册表只保存 Arvuno 需要的设备投影、别名、能力摘要和权限，不复制 Home Assistant 的设备管理平台。
 
 Task Planner 不作为完全独立的通用规划引擎，而是 **Task System** 中的规划组件。第一阶段只需要简单单步或多步计划。
 
@@ -22,7 +22,7 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 | API Layer | 对外提供稳定 HTTP/WebSocket 接口 | 第一阶段 |
 | Device Integration | 屏蔽设备平台差异，提供统一设备接口 | 第一阶段 |
 | Device Registry | 保存轻量设备投影、能力摘要、别名和权限映射 | 第一阶段 |
-| Environment Context | 维护 Nova 自己的环境状态 | 第一阶段 |
+| Environment Context | 维护 Arvuno 自己的环境状态 | 第一阶段 |
 | Event System | 统一事件表示、分发和持久化 | 第一阶段 |
 | Memory System | 管理短期上下文、偏好和长期记忆 | 第一阶段基础版 |
 | AI Provider | 隔离模型供应商差异 | 第一阶段 |
@@ -30,7 +30,7 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 | Task System | 管理任务、计划、状态和历史 | 第一阶段 |
 | Tool System | 注册工具、校验参数、安全执行 | 第一阶段 |
 | Safety Policy | 权限、风险和确认策略 | 第一阶段 |
-| Automation Engine | 只处理需要 Nova 上下文的少量通知型或确认后低风险自动化 | 第一阶段基础版 |
+| Automation Engine | 只处理需要 Arvuno 上下文的少量通知型或确认后低风险自动化 | 第一阶段基础版 |
 | Persistence Layer | 提供数据访问边界 | 第一阶段 |
 | Observability | 日志、健康检查和调用追踪 | 第一阶段基础版 |
 | Scheduler | 定时任务和后台刷新 | 第一阶段基础版 |
@@ -98,7 +98,7 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 
 **解决什么问题：**
 
-将 Home Assistant、未来 MQTT 或其他平台的设备能力转换为 Nova 的统一设备接口。
+将 Home Assistant、未来 MQTT 或其他平台的设备能力转换为 Arvuno 的统一设备接口。
 
 **为什么需要：**
 
@@ -154,11 +154,11 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 
 **解决什么问题：**
 
-为 Nova 提供稳定的轻量设备投影，屏蔽外部实体 ID 的变化，并附加 Nova 侧权限与别名。
+为 Arvuno 提供稳定的轻量设备投影，屏蔽外部实体 ID 的变化，并附加 Arvuno 侧权限与别名。
 
 **为什么需要：**
 
-Agent 和任务系统应面向 Nova 的设备 ID、区域、类型和能力，而不是直接面向 Home Assistant entity_id。设备发现、协议适配、完整设备档案和完整设备历史继续由 Home Assistant 负责。
+Agent 和任务系统应面向 Arvuno 的设备 ID、区域、类型和能力，而不是直接面向 Home Assistant entity_id。设备发现、协议适配、完整设备档案和完整设备历史继续由 Home Assistant 负责。
 
 **输入：**
 
@@ -206,7 +206,7 @@ Agent 和任务系统应面向 Nova 的设备 ID、区域、类型和能力，�
 
 **解决什么问题：**
 
-维护 Nova 对当前环境的结构化理解，而不是每次都重新拼接设备列表。
+维护 Arvuno 对当前环境的结构化理解，而不是每次都重新拼接设备列表。
 
 **为什么需要：**
 
@@ -280,7 +280,7 @@ Agent 需要一个稳定上下文来理解当前状态、最近事件、用户�
 
 **输出：**
 
-- 标准 `NovaEvent`
+- 标准 `ArvunoEvent`
 - 事件订阅回调
 - 事件时间线查询结果
 - correlation ID 关联链
@@ -321,7 +321,7 @@ Agent 需要一个稳定上下文来理解当前状态、最近事件、用户�
 
 **为什么需要：**
 
-如果只保存聊天记录，Nova 无法形成可靠的用户偏好和执行经验，也无法清理无关数据。
+如果只保存聊天记录，Arvuno 无法形成可靠的用户偏好和执行经验，也无法清理无关数据。
 
 **输入：**
 
@@ -643,15 +643,15 @@ Tool System 与 Agent 通过候选计划和结果摘要交互，不共享数据�
 
 **解决什么问题：**
 
-只处理需要 Nova 环境上下文、任务历史或用户偏好的少量自动化，第一阶段以通知为主，动作型自动化必须经过确认且限定为低风险。
+只处理需要 Arvuno 环境上下文、任务历史或用户偏好的少量自动化，第一阶段以通知为主，动作型自动化必须经过确认且限定为低风险。
 
 **为什么需要：**
 
-Home Assistant 已能覆盖普通定时、状态触发和场景自动化。Nova 只覆盖需要 AI 上下文或需要进入任务审计链路的场景。
+Home Assistant 已能覆盖普通定时、状态触发和场景自动化。Arvuno 只覆盖需要 AI 上下文或需要进入任务审计链路的场景。
 
 **输入：**
 
-- NovaEvent
+- ArvunoEvent
 - 自动化规则
 - Environment Context
 - 用户权限
@@ -886,7 +886,7 @@ AI 系统链路长，缺少 correlation ID 和结构化日志时很难排查。
 
 **解决什么问题：**
 
-提供 Nova 的运行状态、设备、事件、对话、任务和自动化观测界面。
+提供 Arvuno 的运行状态、设备、事件、对话、任务和自动化观测界面。
 
 **为什么需要：**
 

@@ -6,23 +6,23 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from nova_core.devices.models import (
+from arvuno_core.devices.models import (
     DeviceCapability,
     DevicePermissions,
     DeviceRiskLevel,
     DeviceType,
 )
-from nova_core.devices.registry import RegisteredDevice
-from nova_core.tools.confirmation import ConfirmationService, ConfirmationSubject
-from nova_core.tools.errors import (
+from arvuno_core.devices.registry import RegisteredDevice
+from arvuno_core.tools.confirmation import ConfirmationService, ConfirmationSubject
+from arvuno_core.tools.errors import (
     ToolConfirmationRequiredError,
     ToolNotFoundError,
     ToolPersistenceError,
     ToolStateConflictError,
     ToolValidationError,
 )
-from nova_core.tools.executor import ToolEventPublisherProtocol, ToolExecutor
-from nova_core.tools.models import (
+from arvuno_core.tools.executor import ToolEventPublisherProtocol, ToolExecutor
+from arvuno_core.tools.models import (
     ControlDeviceInput,
     ControlDeviceOutput,
     PermissionResult,
@@ -30,9 +30,9 @@ from nova_core.tools.models import (
     ToolPermission,
     ToolRiskLevel,
 )
-from nova_core.tools.registry import ToolDefinition, ToolRegistry
-from nova_core.tools.safety import SafetyPolicy
-from nova_core.tools.storage import (
+from arvuno_core.tools.registry import ToolDefinition, ToolRegistry
+from arvuno_core.tools.safety import SafetyPolicy
+from arvuno_core.tools.storage import (
     ToolDefinitionRecord,
     ToolExecutionCreate,
     ToolExecutionUpdate,

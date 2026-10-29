@@ -4,17 +4,17 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from nova_core.app import create_app
-from nova_core.config import Settings
-from nova_core.events.models import (
+from arvuno_core.app import create_app
+from arvuno_core.config import Settings
+from arvuno_core.events.models import (
+    ArvunoEvent,
+    ArvunoEventSource,
+    ArvunoEventType,
     DeviceStateChangedPayload,
-    NovaEvent,
-    NovaEventSource,
-    NovaEventType,
     utc_now,
 )
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def runtime_settings(tmp_path: Path) -> Settings:
@@ -50,9 +50,9 @@ def test_create_app_wires_event_bus_to_environment_context(
         assert app.state.event_bus is not None
         assert app.state.environment_context is not None
         occurred_at = utc_now()
-        event = NovaEvent(
-            event_type=NovaEventType.DEVICE_STATE_CHANGED,
-            source=NovaEventSource.MOCK_ADAPTER,
+        event = ArvunoEvent(
+            event_type=ArvunoEventType.DEVICE_STATE_CHANGED,
+            source=ArvunoEventSource.MOCK_ADAPTER,
             subject_type="device",
             subject_id="device-1",
             payload=DeviceStateChangedPayload(

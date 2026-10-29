@@ -1,5 +1,5 @@
-from nova_core.devices.errors import DeviceWriteDisabledError
-from nova_core.devices.models import (
+from arvuno_core.devices.errors import DeviceWriteDisabledError
+from arvuno_core.devices.models import (
     Device,
     DeviceAction,
     DeviceCapability,
@@ -39,7 +39,7 @@ def test_device_model_normalizes_domain_shape() -> None:
     event = DeviceEvent(
         event_type=DeviceEventType.DEVICE_UNAVAILABLE,
         source="home_assistant",
-        subject_id="nova-device-id",
+        subject_id="arvuno-device-id",
         payload={"previous_state": "on", "current_state": "unavailable"},
     )
 

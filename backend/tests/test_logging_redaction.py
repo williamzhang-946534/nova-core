@@ -1,6 +1,6 @@
 import logging
 
-from nova_core.logging_config import redact_sensitive_text, redact_sensitive_value
+from arvuno_core.logging_config import redact_sensitive_text, redact_sensitive_value
 
 
 def test_sensitive_key_value_pairs_are_redacted_in_text() -> None:
@@ -32,7 +32,7 @@ def test_structured_sensitive_fields_are_redacted_recursively() -> None:
 
 def test_log_formatter_redacts_messages_and_exceptions() -> None:
     record = logging.LogRecord(
-        name="nova",
+        name="arvuno",
         level=logging.INFO,
         pathname=__file__,
         lineno=1,

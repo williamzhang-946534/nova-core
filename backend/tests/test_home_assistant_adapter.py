@@ -6,8 +6,8 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from nova_core.config import Settings
-from nova_core.devices.errors import (
+from arvuno_core.config import Settings
+from arvuno_core.devices.errors import (
     AdapterTimeoutError,
     AuthorizationError,
     DeviceNotFoundError,
@@ -15,8 +15,8 @@ from nova_core.devices.errors import (
     DeviceWriteDisabledError,
     InvalidActionParameterError,
 )
-from nova_core.devices.home_assistant import HomeAssistantAdapter
-from nova_core.devices.models import DeviceAction, DeviceStateName, DeviceType
+from arvuno_core.devices.home_assistant import HomeAssistantAdapter
+from arvuno_core.devices.models import DeviceAction, DeviceStateName, DeviceType
 
 
 def run(coroutine):
@@ -72,7 +72,7 @@ def test_health_check_and_scoped_state_normalization() -> None:
         if request.url.path == "/api/states/light.living_room":
             return httpx.Response(200, json=entity(state="on", attributes={}))
         if request.url.path == "/api/states":
-            raise AssertionError("Nova must not import the full Home Assistant state list")
+            raise AssertionError("Arvuno must not import the full Home Assistant state list")
         return httpx.Response(404)
 
     async def scenario() -> None:

@@ -18,7 +18,7 @@
 | 事件类型 | Event Schema | 已设计 |
 | 工具能力 | Tool Registry | 已设计 |
 | 记忆检索 | MemoryStore | 已设计 |
-| 自动化动作 | Automation Action Model | 仅限少量 Nova 上下文规则，不做通用动作平台 |
+| 自动化动作 | Automation Action Model | 仅限少量 Arvuno 上下文规则，不做通用动作平台 |
 | 前端页面 | Frontend Dashboard | 已设计 |
 | 数据库 | Persistence Layer | 已设计 |
 | 语音交互 | Future Extension | 仅文档记录，未设计当前模块 |
@@ -296,4 +296,4 @@ Agent Runtime
 
 ## 结论
 
-Nova Core 的扩展能力来自清晰的接口边界，而不是提前堆叠复杂基础设施。第一阶段应把设备抽象、事件、任务、工具安全执行和验证闭环做稳定，再评估 MQTT、语音、视觉、本地模型和机器人方向。
+Arvuno Core 的扩展能力来自清晰的接口边界，而不是提前堆叠复杂基础设施。第一阶段应把设备抽象、事件、任务、工具安全执行和验证闭环做稳定，再评估 MQTT、语音、视觉、本地模型和机器人方向。

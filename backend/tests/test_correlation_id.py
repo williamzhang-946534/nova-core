@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from nova_core.app import create_app
+from arvuno_core.app import create_app
 
 
 def test_correlation_id_is_returned_and_can_be_provided() -> None:

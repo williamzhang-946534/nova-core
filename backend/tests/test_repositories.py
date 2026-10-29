@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from nova_core.config import Settings
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.exceptions import RepositoryError
-from nova_core.persistence.models import Device, DeviceState, Event, SystemSetting
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.config import Settings
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.exceptions import RepositoryError
+from arvuno_core.persistence.models import Device, DeviceState, Event, SystemSetting
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def phase_settings(tmp_path: Path) -> Settings:
@@ -131,7 +131,7 @@ def test_secret_system_settings_cannot_be_written_through_repository(
         uow.system_settings.add(
             SystemSetting(
                 key="provider.credential",
-                value={"reference": "NOVA_API_TOKEN"},
+                value={"reference": "ARVUNO_API_TOKEN"},
                 value_type="reference",
                 is_secret=True,
             )

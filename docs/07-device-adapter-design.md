@@ -2,21 +2,21 @@
 
 ## 目标
 
-设备适配层负责将外部设备平台转换为 Nova 的统一设备接口。它是 Home Assistant 与 Nova 核心领域之间的防腐层。
+设备适配层负责将外部设备平台转换为 Arvuno 的统一设备接口。它是 Home Assistant 与 Arvuno 核心领域之间的防腐层。
 
 Agent、Task System 和 Tool Executor 不允许直接调用 Home Assistant API。
 
 ## 责任边界
 
-| 能力 | 归属 | Nova 处理 |
+| 能力 | 归属 | Arvuno 处理 |
 | --- | --- | --- |
 | 设备发现、集成和协议适配 | Home Assistant | 不实现 |
 | 完整设备注册和配置 | Home Assistant | 不复制 |
 | 当前状态查询和设备控制 | Home Assistant | 通过 Adapter 标准化 |
 | 完整设备历史和统计图表 | Home Assistant | 不复制 |
 | 基础自动化和场景 | Home Assistant 优先 | 不做通用替代品 |
-| Nova 设备 ID、别名、权限和能力摘要 | Nova | 保存轻量投影 |
-| 任务、工具和审计记录 | Nova | 独立保存 |
+| Arvuno 设备 ID、别名、权限和能力摘要 | Arvuno | 保存轻量投影 |
+| 任务、工具和审计记录 | Arvuno | 独立保存 |
 
 ## 核心接口
 
@@ -57,7 +57,7 @@ class DeviceAdapter(Protocol):
 | --- | --- |
 | external_id | 适配器内唯一 ID |
 | name | 设备名称 |
-| device_type | Nova 标准类型 |
+| device_type | Arvuno 标准类型 |
 | area | 区域 |
 | capabilities | 能力列表 |
 | risk_level | 默认风险 |
@@ -151,9 +151,9 @@ class DeviceAdapter(Protocol):
 ### 配置
 
 ```text
-NOVA_HOME_ASSISTANT_URL=https://home-assistant.local
-NOVA_HOME_ASSISTANT_TOKEN=<local-token>
-NOVA_HOME_ASSISTANT_TIMEOUT_SECONDS=10
+ARVUNO_HOME_ASSISTANT_URL=https://home-assistant.local
+ARVUNO_HOME_ASSISTANT_TOKEN=<local-token>
+ARVUNO_HOME_ASSISTANT_TIMEOUT_SECONDS=10
 ```
 
 配置只通过环境变量或本地配置文件读取，不得写入源码。
@@ -181,7 +181,7 @@ NOVA_HOME_ASSISTANT_TIMEOUT_SECONDS=10
 
 ### 实体映射
 
-| Home Assistant | Nova |
+| Home Assistant | Arvuno |
 | --- | --- |
 | `entity_id` | `external_id` |
 | `attributes.friendly_name` | `Device.name` |
@@ -193,7 +193,7 @@ NOVA_HOME_ASSISTANT_TIMEOUT_SECONDS=10
 
 类型映射示例：
 
-| Home Assistant domain | Nova DeviceType |
+| Home Assistant domain | Arvuno DeviceType |
 | --- | --- |
 | `light` | `light` |
 | `switch` | `switch` |
@@ -208,7 +208,7 @@ NOVA_HOME_ASSISTANT_TIMEOUT_SECONDS=10
 
 ### 服务映射
 
-| Nova Action | Home Assistant Service |
+| Arvuno Action | Home Assistant Service |
 | --- | --- |
 | `turn_on` | `homeassistant.turn_on` 或域专属服务 |
 | `turn_off` | `homeassistant.turn_off` 或域专属服务 |
@@ -253,7 +253,7 @@ Home Assistant `state_changed` 转换为：
   "event_type": "device_state_changed",
   "source": "home_assistant",
   "subject_type": "device",
-  "subject_id": "nova-device-id",
+  "subject_id": "arvuno-device-id",
   "payload": {
     "previous_state": "off",
     "current_state": "on",
@@ -267,15 +267,15 @@ Home Assistant `state_changed` 转换为：
 
 ## Device Registry
 
-Registry 负责将 `external_id` 转换为 Nova `device_id`。
+Registry 负责将 `external_id` 转换为 Arvuno `device_id`。
 
 职责：
 
-1. 同步配置范围内允许 Nova 使用的设备投影。
+1. 同步配置范围内允许 Arvuno 使用的设备投影。
 2. 保存设备能力摘要。
 3. 保存区域和别名。
 4. 保存设备启用状态和默认风险等级。
-5. 提供设备查询和外部 ID 到 Nova 设备 ID 的映射。
+5. 提供设备查询和外部 ID 到 Arvuno 设备 ID 的映射。
 
 Registry 是轻量投影，不是设备管理平台。它不负责：
 
@@ -357,7 +357,7 @@ Registry 是轻量投影，不是设备管理平台。它不负责：
 ## 第一阶段验收
 
 1. Home Assistant 健康检查可用。
-2. 能只同步配置范围内允许 Nova 使用的实体，而不是 Home Assistant 全部设备。
+2. 能只同步配置范围内允许 Arvuno 使用的实体，而不是 Home Assistant 全部设备。
 3. 能读取设备状态。
 4. 能订阅或轮询状态变化。
 5. 能执行低风险动作。

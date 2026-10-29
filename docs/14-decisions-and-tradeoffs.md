@@ -6,7 +6,7 @@
 
 **背景：**
 
-Nova 是个人开发的 Windows 本地系统，需要集成设备、AI、事件和 Web 控制台。第一阶段用户量只有一人，没有多实例部署需求。
+Arvuno 是个人开发的 Windows 本地系统，需要集成设备、AI、事件和 Web 控制台。第一阶段用户量只有一人，没有多实例部署需求。
 
 **决策：**
 
@@ -126,17 +126,17 @@ Nova 是个人开发的 Windows 本地系统，需要集成设备、AI、事件�
 
 **背景：**
 
-Home Assistant 已经提供设备集成、状态、控制、事件和协议兼容能力。Nova 不应重复建设这些能力。
+Home Assistant 已经提供设备集成、状态、控制、事件和协议兼容能力。Arvuno 不应重复建设这些能力。
 
 **决策：**
 
-通过 Home Assistant Adapter 接入设备。Nova 只保存轻量设备投影、别名、能力摘要和权限映射，不复刻 Home Assistant 的设备管理、发现、协议配置和完整历史。
+通过 Home Assistant Adapter 接入设备。Arvuno 只保存轻量设备投影、别名、能力摘要和权限映射，不复刻 Home Assistant 的设备管理、发现、协议配置和完整历史。
 
 **理由：**
 
 - 降低第一阶段硬件和协议适配成本。
 - 快速获得真实设备数据。
-- 保持 Nova 与具体平台解耦。
+- 保持 Arvuno 与具体平台解耦。
 
 **代价：**
 
@@ -146,7 +146,7 @@ Home Assistant 已经提供设备集成、状态、控制、事件和协议兼�
 **缓解：**
 
 - Device Adapter Interface。
-- Device Registry 只保存 Nova 所需投影。
+- Device Registry 只保存 Arvuno 所需投影。
 - Mock Adapter 用于离线测试。
 - 未来可新增其他适配器。
 
@@ -301,7 +301,7 @@ Agent 只生成候选意图和计划，并提交给 Task System。Task System �
 
 **决策：**
 
-Nova 当前和第一阶段均不开发老人监护、异常检测、养老、安全告警、远程照护和相关商业服务。
+Arvuno 当前和第一阶段均不开发老人监护、异常检测、养老、安全告警、远程照护和相关商业服务。
 
 **影响：**
 
@@ -362,7 +362,7 @@ Nova 当前和第一阶段均不开发老人监护、异常检测、养老、安
 
 | 审查项 | 结论 |
 | --- | --- |
-| 是否重复实现 Home Assistant | 否，设备注册表是轻量投影，自动化仅限 Nova 上下文场景 |
+| 是否重复实现 Home Assistant | 否，设备注册表是轻量投影，自动化仅限 Arvuno 上下文场景 |
 | 是否过度依赖 Home Assistant | 否，有适配层和轻量内部投影 |
 | AI、设备控制和数据库是否耦合 | 否，分别通过 Provider、Adapter 和 Repository 隔离 |
 | 是否有独立设备适配层 | 是 |

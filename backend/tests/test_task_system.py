@@ -8,17 +8,17 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from nova_core.app import create_app
-from nova_core.config import Settings
-from nova_core.devices.mock import MockDeviceAdapter
-from nova_core.devices.registry import DeviceRegistry
-from nova_core.devices.service import DeviceApplicationService
-from nova_core.events.bus import EventBus
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.tools import SqlToolExecutionStore
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from nova_core.tasks.errors import TaskStateError
-from nova_core.tasks.models import (
+from arvuno_core.app import create_app
+from arvuno_core.config import Settings
+from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.registry import DeviceRegistry
+from arvuno_core.devices.service import DeviceApplicationService
+from arvuno_core.events.bus import EventBus
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.tools import SqlToolExecutionStore
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.tasks.errors import TaskStateError
+from arvuno_core.tasks.models import (
     TaskCreate,
     TaskCreateRecord,
     TaskPlanStep,
@@ -28,13 +28,13 @@ from nova_core.tasks.models import (
     validate_task_step_transition,
     validate_task_transition,
 )
-from nova_core.tasks.service import TaskService
-from nova_core.tools.confirmation import ConfirmationService
-from nova_core.tools.errors import ToolConfirmationRequiredError
-from nova_core.tools.executor import ToolExecutor
-from nova_core.tools.models import PermissionResult, ToolExecutionResult, ToolRiskLevel
-from nova_core.tools.registry import build_default_tool_registry
-from nova_core.tools.safety import SafetyPolicy
+from arvuno_core.tasks.service import TaskService
+from arvuno_core.tools.confirmation import ConfirmationService
+from arvuno_core.tools.errors import ToolConfirmationRequiredError
+from arvuno_core.tools.executor import ToolExecutor
+from arvuno_core.tools.models import PermissionResult, ToolExecutionResult, ToolRiskLevel
+from arvuno_core.tools.registry import build_default_tool_registry
+from arvuno_core.tools.safety import SafetyPolicy
 
 
 def phase_settings(tmp_path: Path) -> Settings:

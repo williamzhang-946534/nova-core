@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from nova_core.config import Settings
-from nova_core.persistence.backup import SqliteBackupService
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.exceptions import BackupError
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.config import Settings
+from arvuno_core.persistence.backup import SqliteBackupService
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.exceptions import BackupError
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def phase_settings(tmp_path: Path, **overrides: object) -> Settings:

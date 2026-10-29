@@ -8,29 +8,29 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from nova_core.ai.errors import (
+from arvuno_core.ai.errors import (
     ProviderAuthenticationError,
     ProviderConfigurationError,
     ProviderInvalidOutputError,
     ProviderTimeoutError,
 )
-from nova_core.ai.mock import MockAIProvider
-from nova_core.ai.models import (
+from arvuno_core.ai.mock import MockAIProvider
+from arvuno_core.ai.models import (
     ProviderMessage,
     ProviderMessageRole,
     ProviderRequest,
     ProviderResponse,
 )
-from nova_core.ai.openai_compatible import (
+from arvuno_core.ai.openai_compatible import (
     OpenAICompatibleProvider,
     OpenAICompatibleProviderConfig,
 )
-from nova_core.ai.storage import ProviderLogFinish, ProviderLogStart
-from nova_core.config import Settings
-from nova_core.persistence.database import DatabaseManager
-from nova_core.persistence.models import ProviderLog
-from nova_core.persistence.provider_logs import SqlProviderLogStore
-from nova_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.ai.storage import ProviderLogFinish, ProviderLogStart
+from arvuno_core.config import Settings
+from arvuno_core.persistence.database import DatabaseManager
+from arvuno_core.persistence.models import ProviderLog
+from arvuno_core.persistence.provider_logs import SqlProviderLogStore
+from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 @dataclass
@@ -281,7 +281,7 @@ def test_openai_provider_requires_protected_configuration() -> None:
         max_retries=0,
     )
 
-    with pytest.raises(ProviderConfigurationError, match="NOVA_AI_BASE_URL"):
+    with pytest.raises(ProviderConfigurationError, match="ARVUNO_AI_BASE_URL"):
         config.validate()
 
     with pytest.raises(ValueError, match="Missing OpenAI-compatible AI settings"):

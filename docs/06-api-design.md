@@ -4,7 +4,7 @@
 
 1. 后端 API 以 `/api` 为前缀。
 2. REST API 负责查询和命令提交。
-3. WebSocket 负责事件推送和任务进度。
+3. WebSocket 是事件推送和任务进度的目标设计；Phase 8 Web 控制台先使用认证后的 API 轮询，WebSocket 仍为后续实现。
 4. 请求和响应使用 JSON。
 5. 列表接口支持分页。
 6. 时间使用 UTC ISO-8601。
@@ -16,7 +16,7 @@
 
 第一阶段使用本地访问控制：
 
-- 后端启动时从环境变量读取 `NOVA_API_TOKEN`。
+- 后端启动时从环境变量读取 `ARVUNO_API_TOKEN`。
 - 除健康检查和登录状态探测外，API 请求必须携带 `Authorization: Bearer <token>`。
 - Token 不写入源码。
 - 如果服务只绑定 `127.0.0.1`，仍必须启用 Token，避免未来网络配置变化后失去保护。
@@ -120,6 +120,8 @@
 
 ## 设备 API
 
+Phase 8 已实现设备列表、详情和当前状态查询。设备同步和直接动作提交仍是后续规划，当前 Web 控制台不绕过 `/api/chat` 与 Task System 执行设备控制。
+
 ### `GET /api/devices`
 
 查询设备列表。
@@ -137,7 +139,7 @@
 
 ### `POST /api/devices/sync`
 
-手动触发设备投影同步。同步范围由服务端配置决定，只处理允许 Nova 使用的实体类型、区域和实体 ID，不导入 Home Assistant 全部设备、完整配置或历史。
+手动触发设备投影同步。同步范围由服务端配置决定，只处理允许 Arvuno 使用的实体类型、区域和实体 ID，不导入 Home Assistant 全部设备、完整配置或历史。
 
 请求：
 
@@ -280,7 +282,7 @@ Phase 7 实现最小无状态对话入口；不创建或持久化 Conversation�
 
 低风险动作被配置为需要确认时，`status` 为 `waiting_confirmation`，响应包含一次性 `confirmation_token` 和确认摘要；后续仍使用任务确认 API。Provider 超时、非法 JSON、非法候选计划、未知工具、非法参数和模型拒绝均返回失败状态，不创建任务或报告成功。
 
-以下 Conversation API 是后续 Web 控制台和记忆阶段的规划，Phase 7 尚未实现。
+Phase 8 AI 对话页面使用上述最小无状态 `/api/chat` 入口；对话内容不在前端或后端持久化。以下 Conversation API 是后续记忆阶段的规划，尚未实现。
 
 ### `GET /api/conversations`
 
@@ -392,11 +394,11 @@ Phase 7 实现最小无状态对话入口；不创建或持久化 Conversation�
 
 ## 自动化 API
 
-以下接口只管理少量需要 Nova 上下文的规则，不提供通用自动化编辑器、场景系统或 Home Assistant 自动化迁移功能。
+以下接口只管理少量需要 Arvuno 上下文的规则，不提供通用自动化编辑器、场景系统或 Home Assistant 自动化迁移功能。
 
 ### `GET /api/automations`
 
-查询自动化规则。
+查询自动化规则。支持 `enabled`、`page`、`page_size` 参数，返回 `data/page/page_size/total` 分页结构。
 
 ### `POST /api/automations`
 
@@ -407,27 +409,37 @@ Phase 7 实现最小无状态对话入口；不创建或持久化 Conversation�
 ```json
 {
   "name": "高温提醒",
+  "description": "客厅温度超过阈值时提醒",
+  "enabled": true,
   "trigger": {
     "event_type": "sensor_updated",
-    "conditions": [
-      {
-        "field": "payload.temperature",
-        "operator": "greater_than",
-        "value": 28
-      }
-    ]
+    "subject_id": "device-uuid"
   },
+  "conditions": [
+    {
+      "field": "payload.temperature",
+      "operator": "gt",
+      "value": 28
+    }
+  ],
   "action": {
     "type": "notification",
+    "title": "温度过高",
     "message": "当前温度过高"
   },
   "cooldown_seconds": 600
 }
 ```
 
+`event_type` 仅允许 `device_state_changed`、`sensor_updated`、`device_unavailable`。条件操作符仅允许 `eq`、`ne`、`gt`、`gte`、`lt`、`lte`、`contains`、`in`，多个条件按 AND 评估。通知动作可包含 `level: info | warning | error`；工具动作必须包含 `tool_name`、`input`、`title` 和 `risk_level`。
+
+### `GET /api/automations/{automation_id}`
+
+查询规则详情。
+
 ### `PATCH /api/automations/{automation_id}`
 
-更新规则。
+更新规则。支持修改 `name`、`description`、`enabled`、`trigger`、`conditions`、`action` 和 `cooldown_seconds`。
 
 ### `POST /api/automations/{automation_id}/enable`
 
@@ -439,21 +451,39 @@ Phase 7 实现最小无状态对话入口；不创建或持久化 Conversation�
 
 ### `GET /api/automations/{automation_id}/runs`
 
-查询规则执行历史。
+查询规则执行历史。Run 状态为 `running | completed | failed | cooldown_skipped | condition_not_met | risk_rejected`，记录包含触发事件、命中上下文、任务 ID、通知 ID 和错误结构。
+
+### `GET /api/notifications`
+
+查询 Web Console 站内通知。支持 `level`、`unread_only`、`page`、`page_size` 参数。
+
+### `POST /api/notifications/{notification_id}/read`
+
+将站内通知标记为已读。
 
 ## 设置 API
 
 ### `GET /api/settings`
 
-查询非敏感系统配置。
+查询非敏感系统配置。Phase 8 返回运行环境摘要、AI Provider 类型、Home Assistant 连接/写开关状态、设备轮询间隔、事件保留策略和 Web Console 偏好；不返回 API Key、Token 或其他敏感值。
 
 ### `PATCH /api/settings`
 
-更新非敏感配置。
+更新非敏感配置。Phase 8 仅允许更新：
+
+```json
+{
+  "web_console": {
+    "event_poll_interval_seconds": 10
+  }
+}
+```
 
 敏感配置只能通过环境变量或本地受保护配置文件修改，不允许通过 API 明文读取。
 
 ## WebSocket
+
+Phase 8 未实现 WebSocket。Web 控制台当前通过 TanStack Query 按服务端保存的 `web_console.event_poll_interval_seconds` 轮询事件、任务和概览 API；以下接口保留为后续设计。
 
 ### `WS /ws/events`
 
@@ -521,10 +551,13 @@ Phase 7 实现最小无状态对话入口；不创建或持久化 Conversation�
 | 设备详情 | `/api/devices/{id}`、`/api/devices/{id}/state`、`/api/events` |
 | 环境状态 | `/api/environment` |
 | 事件时间线 | `/api/events`、`/ws/events` |
-| AI 对话 | `/api/conversations`、`/api/conversations/{id}/messages` |
+| AI 对话 | `/api/chat` |
 | 任务记录 | `/api/tasks`、`/api/tasks/{id}` |
-| 自动化规则 | `/api/automations` |
+| 自动化 | `/api/automations`、`/api/automations/{id}/runs` |
+| 通知 | `/api/notifications` |
 | 系统设置 | `/api/settings` |
+
+Phase 8 事件时间线仅使用 `/api/events` 轮询；Phase 9 已提供自动化和站内通知 API。WebSocket 推送与 Conversation API 尚未实现。
 
 ## API 安全要求
 

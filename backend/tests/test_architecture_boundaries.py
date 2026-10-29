@@ -1,7 +1,9 @@
 import ast
 from pathlib import Path
 
-PACKAGE_ROOT = Path(__file__).parents[1] / "nova_core"
+from arvuno_core.automation.models import AUTOMATION_EVENT_TYPES
+
+PACKAGE_ROOT = Path(__file__).parents[1] / "arvuno_core"
 
 
 def imported_modules(source: str) -> set[str]:
@@ -50,8 +52,8 @@ def test_tool_system_stays_behind_device_and_persistence_ports() -> None:
         modules = imported_modules(source)
         assert "httpx" not in modules, f"{path} imports HTTP directly"
         assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
-        assert "nova_core.devices.home_assistant" not in source
-        assert "nova_core.persistence" not in source
+        assert "arvuno_core.devices.home_assistant" not in source
+        assert "arvuno_core.persistence" not in source
 
 
 def test_task_system_uses_tool_executor_and_persistence_ports() -> None:
@@ -63,8 +65,8 @@ def test_task_system_uses_tool_executor_and_persistence_ports() -> None:
         assert "httpx" not in modules, f"{path} imports HTTP directly"
         assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
         assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
-        assert "nova_core.devices" not in source, f"{path} imports a device adapter directly"
-        assert "nova_core.persistence" not in source, f"{path} imports persistence directly"
+        assert "arvuno_core.devices" not in source, f"{path} imports a device adapter directly"
+        assert "arvuno_core.persistence" not in source, f"{path} imports persistence directly"
 
 
 def test_task_steps_call_the_tool_executor_port() -> None:
@@ -93,10 +95,34 @@ def test_agent_runtime_stays_behind_provider_task_and_catalog_ports() -> None:
         assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
         assert "alembic" not in modules, f"{path} imports Alembic directly"
         assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
-        assert "nova_core.persistence" not in source, f"{path} imports persistence directly"
-        assert "nova_core.devices" not in source, f"{path} imports a device adapter directly"
-        assert "nova_core.tools.executor" not in source, f"{path} imports Tool Executor directly"
-        assert "nova_core.ai.openai_compatible" not in source, f"{path} imports a provider directly"
+        assert "arvuno_core.persistence" not in source, f"{path} imports persistence directly"
+        assert "arvuno_core.devices" not in source, f"{path} imports a device adapter directly"
+        assert "arvuno_core.tools.executor" not in source, f"{path} imports Tool Executor directly"
+        assert "arvuno_core.ai.openai_compatible" not in source, (
+            f"{path} imports a provider directly"
+        )
+
+
+def test_automation_stays_behind_event_task_and_persistence_ports() -> None:
+    automation_root = PACKAGE_ROOT / "automation"
+    assert list(automation_root.rglob("*.py"))
+    for path in automation_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        modules = imported_modules(source)
+        assert "httpx" not in modules, f"{path} imports HTTP directly"
+        assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
+        assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
+        assert "arvuno_core.devices" not in source, f"{path} imports a device adapter"
+        assert "arvuno_core.tools.executor" not in source, f"{path} imports Tool Executor directly"
+
+    service_source = (automation_root / "service.py").read_text(encoding="utf-8")
+    assert "create_and_run" in service_source
+    assert "AUTOMATION_EVENT_TYPES" in service_source
+    assert set(AUTOMATION_EVENT_TYPES) == {
+        "device_state_changed",
+        "sensor_updated",
+        "device_unavailable",
+    }
 
 
 def test_ai_provider_stays_behind_http_and_logging_ports() -> None:
@@ -108,9 +134,9 @@ def test_ai_provider_stays_behind_http_and_logging_ports() -> None:
         assert "sqlalchemy" not in modules, f"{path} imports SQLAlchemy directly"
         assert "alembic" not in modules, f"{path} imports Alembic directly"
         assert "homeassistant" not in modules, f"{path} imports Home Assistant directly"
-        assert "nova_core.persistence" not in source, f"{path} imports persistence directly"
-        assert "nova_core.devices" not in source, f"{path} imports a device adapter directly"
-        assert "nova_core.tasks" not in source, f"{path} imports task state directly"
+        assert "arvuno_core.persistence" not in source, f"{path} imports persistence directly"
+        assert "arvuno_core.devices" not in source, f"{path} imports a device adapter directly"
+        assert "arvuno_core.tasks" not in source, f"{path} imports task state directly"
         if path.name != "openai_compatible.py":
             assert "httpx" not in modules, f"{path} imports HTTP directly"
 
@@ -119,5 +145,5 @@ def test_task_system_does_not_depend_on_ai_or_agent_runtime() -> None:
     tasks_root = PACKAGE_ROOT / "tasks"
     for path in tasks_root.rglob("*.py"):
         source = path.read_text(encoding="utf-8")
-        assert "nova_core.ai" not in source, f"{path} imports the AI layer directly"
-        assert "nova_core.agent_runtime" not in source, f"{path} imports Agent Runtime directly"
+        assert "arvuno_core.ai" not in source, f"{path} imports the AI layer directly"
+        assert "arvuno_core.agent_runtime" not in source, f"{path} imports Agent Runtime directly"

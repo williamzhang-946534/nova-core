@@ -10,11 +10,11 @@
 | 架构确认 | 已确认 |
 | 第一阶段运行环境 | Windows 11 本地 |
 
-本文档集是 Nova Core 的架构基线。架构已获得确认，Phase 7 已完成 AI Provider 与 Agent Runtime 代码；自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter、Mock AI Provider 和显式候选计划，尚未连接真实 Home Assistant，也不包含 Memory、会话持久化、Agent 自主规划、自动化引擎、通知系统或业务功能。
+本文档集是 Arvuno Core 的架构基线。架构已获得确认，Phase 7 已完成 AI Provider 与 Agent Runtime 代码；自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter、Mock AI Provider 和显式候选计划，尚未连接真实 Home Assistant，也不包含 Memory、会话持久化、Agent 自主规划、自动化引擎、通知系统或业务功能。
 
 ## 项目背景
 
-Nova Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过智能家居设备、传感器和外部 API 获取现实世界信息，建立自己的环境上下文，接收用户目标，调用 AI 模型进行推理和规划，再通过受控工具执行任务并验证结果。
+Arvuno Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过智能家居设备、传感器和外部 API 获取现实世界信息，建立自己的环境上下文，接收用户目标，调用 AI 模型进行推理和规划，再通过受控工具执行任务并验证结果。
 
 项目的长期方向是成为能够感知环境、建立长期记忆、理解用户意图、规划任务、调用设备并验证执行结果的个人 AI 系统。第一阶段不追求覆盖所有未来能力，而是完成一条完整闭环：
 
@@ -29,13 +29,13 @@ Nova Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能
 
 ## 第一阶段目标
 
-Nova Core 第一阶段需要逐步具备以下能力：
+Arvuno Core 第一阶段需要逐步具备以下能力：
 
 1. 接入 Home Assistant。
 2. 查询设备列表。
 3. 查询设备当前状态。
 4. 获取设备状态变化事件。
-5. 建立 Nova 自己的环境上下文。
+5. 建立 Arvuno 自己的环境上下文。
 6. 保存设备事件和任务记录。
 7. 通过自然语言理解用户意图。
 8. 调用受控工具。
@@ -43,12 +43,12 @@ Nova Core 第一阶段需要逐步具备以下能力：
 10. 验证实际设备状态。
 11. 记录任务执行结果。
 12. 提供 Web 控制台。
-13. 提供少量 Nova 上下文自动化和通知能力。
+13. 提供少量 Arvuno 上下文自动化和通知能力。
 14. 支持后续接入更多设备。
 
 ## 当前产品边界
 
-### 属于 Nova Core
+### 属于 Arvuno Core
 
 - AI Agent Runtime
 - 环境状态模型
@@ -63,7 +63,7 @@ Nova Core 第一阶段需要逐步具备以下能力：
 - 用户偏好理解
 - Web 控制台
 
-### 不属于 Nova Core
+### 不属于 Arvuno Core
 
 - 完整复刻 Home Assistant
 - 自研智能家居协议栈
@@ -76,7 +76,7 @@ Nova Core 第一阶段需要逐步具备以下能力：
 
 ### 明确取消的方向
 
-老人监护、老人异常检测、养老服务、老人安全告警、老人远程照护及相关商业服务已经取消，不得作为 Nova Core 的当前产品规划。
+老人监护、老人异常检测、养老服务、老人安全告警、老人远程照护及相关商业服务已经取消，不得作为 Arvuno Core 的当前产品规划。
 
 ## 文档结构
 
@@ -103,25 +103,25 @@ Nova Core 第一阶段需要逐步具备以下能力：
 
 | 术语 | 定义 |
 | --- | --- |
-| Environment Context | Nova 对当前环境、设备、传感器、用户目标和最近事件的结构化理解 |
-| Device Adapter | 将 Home Assistant 或其他设备平台转换为 Nova 统一设备接口的适配层 |
-| Device Registry | Nova 内部的轻量设备投影、能力摘要、别名和权限映射 |
+| Environment Context | Arvuno 对当前环境、设备、传感器、用户目标和最近事件的结构化理解 |
+| Device Adapter | 将 Home Assistant 或其他设备平台转换为 Arvuno 统一设备接口的适配层 |
+| Device Registry | Arvuno 内部的轻量设备投影、能力摘要、别名和权限映射 |
 | Tool | Agent 可调用的受控能力，例如查询设备、查询环境状态或控制设备 |
 | Tool Registry | 工具元数据和 Schema 的注册中心 |
 | Tool Executor | 负责参数校验、权限检查、风险检查、执行和验证的组件 |
-| Task | Nova 中的多步骤执行单元，包含计划、状态、结果和错误 |
+| Task | Arvuno 中的多步骤执行单元，包含计划、状态、结果和错误 |
 | Event | 系统内可持久化的状态变化或执行事实 |
 | Memory | 结构化保存的短期上下文、用户偏好、任务经验和长期记忆 |
 | Provider | AI 模型供应商适配层 |
 
 ## 当前结论
 
-Nova Core 应采用 Windows 本地运行的模块化单体架构。第一阶段以 Home Assistant 作为唯一真实设备接入平台，以 SQLite 作为本地数据库，以 FastAPI 和 React 构建系统，并在架构上保持设备适配层、事件系统、任务系统、工具执行和安全策略的独立边界。
+Arvuno Core 应采用 Windows 本地运行的模块化单体架构。第一阶段以 Home Assistant 作为唯一真实设备接入平台，以 SQLite 作为本地数据库，以 FastAPI 和 React 构建系统，并在架构上保持设备适配层、事件系统、任务系统、工具执行和安全策略的独立边界。
 
 架构收敛规则：
 
 1. Home Assistant 继续负责设备集成、发现、协议适配、完整设备历史和基础自动化。
-2. Nova 只保存设备投影、上下文事件、任务审计和用户偏好，不复制 Home Assistant 的平台能力。
+2. Arvuno 只保存设备投影、上下文事件、任务审计和用户偏好，不复制 Home Assistant 的平台能力。
 3. Agent 只产生候选意图和计划，不接触数据库实现、SQL 或设备协议客户端。
 4. 机器人只在 [15-future-extension.md](15-future-extension.md) 中作为远期方向记录，当前模块清单和接口设计中没有机器人模块。
 

@@ -1,8 +1,8 @@
 import pytest
 
-from nova_core.devices.errors import StateVerificationFailedError
-from nova_core.devices.models import DeviceAction, DeviceState, DeviceStateName
-from nova_core.devices.verification import DeviceStateVerifier
+from arvuno_core.devices.errors import StateVerificationFailedError
+from arvuno_core.devices.models import DeviceAction, DeviceState, DeviceStateName
+from arvuno_core.devices.verification import DeviceStateVerifier
 
 
 def test_state_verifier_compares_expected_state_and_action_parameter() -> None:

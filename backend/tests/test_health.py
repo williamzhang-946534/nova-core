@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from nova_core import __version__
-from nova_core.app import create_app
+from arvuno_core import __version__
+from arvuno_core.app import create_app
 
 
 def test_health_reports_process_status_without_external_dependencies() -> None:

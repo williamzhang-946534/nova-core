@@ -67,7 +67,7 @@ export default function SystemStatusPage() {
           </Descriptions.Item>
         </Descriptions>
         <Typography.Text className="status-note" type="secondary">
-          健康检查仅确认 Nova 后端进程可用。
+          健康检查仅确认 Arvuno 后端进程可用。
         </Typography.Text>
       </Card>
     </section>
