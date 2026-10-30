@@ -309,3 +309,37 @@ def test_home_assistant_connection_and_authorization_health_errors() -> None:
     unauthorized, disconnected = run(scenario())
     assert unauthorized.status == "disconnected"
     assert disconnected.status == "disconnected"
+
+
+def test_home_assistant_reports_missing_configuration_instead_of_failing() -> None:
+    adapter = HomeAssistantAdapter(Settings(_env_file=None, environment="test"))
+
+    health = run(adapter.health_check())
+
+    assert health.status == "disconnected"
+    assert health.adapter_id == "home_assistant"
+    assert "not configured" in (health.detail or "")
+
+
+def test_home_assistant_health_recovers_after_transient_connection_failure() -> None:
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.ConnectError("unreachable", request=request)
+        return httpx.Response(200, json={"message": "API running."})
+
+    async def scenario() -> tuple[Any, Any]:
+        http = client(handler)
+        adapter = HomeAssistantAdapter(ha_settings(), client=http)
+        first = await adapter.health_check()
+        second = await adapter.health_check()
+        await http.aclose()
+        return first, second
+
+    first, second = run(scenario())
+
+    assert first.status == "disconnected"
+    assert second.status == "healthy"
+    assert calls["count"] == 2

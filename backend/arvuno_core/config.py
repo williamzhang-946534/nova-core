@@ -87,6 +87,13 @@ class Settings(BaseSettings):
             raise ValueError("Filename must be a single file name without a directory component")
         return value
 
+    @field_validator("home_assistant_url", "home_assistant_token", "ai_api_key", mode="before")
+    @classmethod
+    def treat_blank_secret_or_url_as_missing(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("home_assistant_allowed_entity_ids", mode="before")
     @classmethod
     def parse_allowed_entity_ids(cls, value: object) -> object:
@@ -113,7 +120,7 @@ class Settings(BaseSettings):
         if self.environment == "production" and not (
             self.api_token and self.api_token.get_secret_value().strip()
         ):
-            raise ValueError("ARVUNO_API_TOKEN is required when ARVUNO_ENV is production")
+            raise ValueError("ARVUNO_API_TOKEN is required when ARVUNO_ENVIRONMENT is production")
         if self.environment == "production" and self.home_assistant_write_enabled:
             raise ValueError(
                 "ARVUNO_HOME_ASSISTANT_WRITE_ENABLED can only be enabled for controlled "

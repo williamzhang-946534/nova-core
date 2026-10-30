@@ -34,12 +34,15 @@ from arvuno_core.automation.service import AutomationService
 from arvuno_core.config import Settings, get_settings
 from arvuno_core.devices.home_assistant import HomeAssistantAdapter
 from arvuno_core.devices.mock import MockDeviceAdapter
+from arvuno_core.devices.polling_runtime import DevicePollingRuntime
 from arvuno_core.devices.registry import DeviceRegistry
 from arvuno_core.devices.service import DeviceApplicationService
 from arvuno_core.environment.context import EnvironmentContextService, area_summary
+from arvuno_core.environment.reconciliation import EnvironmentReconciler
 from arvuno_core.errors import ArvunoError, ErrorResponse
 from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
+from arvuno_core.events.service import DeviceEventService
 from arvuno_core.logging_config import correlation_id_var
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.provider_logs import SqlProviderLogStore
@@ -55,12 +58,45 @@ from arvuno_core.tools.safety import SafetyPolicy
 logger = logging.getLogger(__name__)
 
 
+async def _start_device_polling(
+    app: FastAPI,
+    device_registry: DeviceRegistry,
+) -> DevicePollingRuntime:
+    app_settings: Settings = app.state.settings
+    adapters = app.state.device_polling_adapters
+    external_ids: dict[str, list[str]] = {}
+    for adapter_id, adapter in adapters.items():
+        if adapter_id == "home_assistant":
+            external_ids[adapter_id] = list(app_settings.home_assistant_allowed_entity_ids)
+        else:
+            external_ids[adapter_id] = [
+                device.external_id for device in await adapter.get_devices()
+            ]
+    runtime = DevicePollingRuntime(
+        EnvironmentReconciler(
+            device_registry,
+            DeviceEventService(device_registry, app.state.event_bus),
+        ),
+        adapters,
+        external_ids,
+        interval_seconds=float(app_settings.device_poll_interval_seconds),
+    )
+    runtime.start()
+    logger.info(
+        "device_polling_started",
+        extra={
+            "payload": {
+                "adapters": sorted(adapters),
+                "interval_seconds": app_settings.device_poll_interval_seconds,
+            }
+        },
+    )
+    return runtime
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("arvuno_backend_started", extra={"version": __version__})
-    if getattr(app.state, "initialize_event_runtime", False):
-        environment_context = app.state.environment_context
-        await environment_context.initialize()
     if getattr(app.state, "initialize_tool_runtime", False):
         device_registry = app.state.device_registry
         mock_adapter = app.state.mock_device_adapter
@@ -71,7 +107,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await device_registry.sync_devices(home_assistant_adapter)
             except Exception:
                 logger.exception("home_assistant_projection_sync_failed")
+        if getattr(app.state, "start_device_polling", False):
+            runtime = await _start_device_polling(app, device_registry)
+            app.state.device_polling_runtime = runtime
+    if getattr(app.state, "initialize_event_runtime", False):
+        environment_context = app.state.environment_context
+        await environment_context.initialize()
+        await environment_context.synchronize_with_registry()
     yield
+    runtime = getattr(app.state, "device_polling_runtime", None)
+    if runtime is not None:
+        await runtime.stop()
     provider = getattr(app.state, "ai_provider", None)
     if provider is not None:
         await provider.aclose()
@@ -91,6 +137,7 @@ def create_app(
     ai_provider: AIProvider | None = None,
     initialize_event_runtime: bool = False,
     initialize_tool_runtime: bool = False,
+    start_device_polling: bool = False,
 ) -> FastAPI:
     app_settings = settings or get_settings()
     database_manager: DatabaseManager | None = None
@@ -148,6 +195,7 @@ def create_app(
     tool_registry = build_default_tool_registry(
         device_service,
         environment_state_provider=lambda: environment_context.state,
+        environment_state_sink=environment_context,
     )
     tool_executor = ToolExecutor(
         registry=tool_registry,
@@ -163,6 +211,12 @@ def create_app(
     )
     app.state.mock_device_adapter = mock_adapter
     app.state.home_assistant_adapter = home_assistant_adapter
+    app.state.device_polling_adapters = {
+        adapter.adapter_id: adapter
+        for adapter in (mock_adapter, home_assistant_adapter)
+        if adapter is not None
+    }
+    app.state.start_device_polling = start_device_polling
     app.state.device_registry = device_registry
     app.state.device_service = device_service
     app.state.tool_registry = tool_registry

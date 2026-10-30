@@ -1,0 +1,15 @@
+# Arvuno Core — Home Assistant demo environment.
+#
+# Start with:  docker compose up -d
+# Open:        http://localhost:8123  (complete onboarding, then enable demo)
+services:
+  homeassistant:
+    image: homeassistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config:/config
+    ports:
+      - "8123:8123"

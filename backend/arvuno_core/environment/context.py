@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -53,6 +53,19 @@ class SensorContextState(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
+
+
+class EnvironmentStateSink(Protocol):
+    """Narrow write port used after a verified device action."""
+
+    async def apply_verified_state(
+        self,
+        device_id: str,
+        *,
+        state: str,
+        attributes: dict[str, Any],
+        observed_at: datetime,
+    ) -> None: ...
 
 
 class EnvironmentContextState(BaseModel):
@@ -124,6 +137,85 @@ class EnvironmentContextService:
                     "updated_at": created_at or utc_now(),
                 }
             )
+
+    async def synchronize_with_registry(self) -> None:
+        """Project the authoritative device registry into the environment view."""
+        if self._registry is None:
+            return
+        projected: dict[str, DeviceContextState] = {}
+        for device in await self._registry.list_devices(is_enabled=True):
+            latest = await self._registry.latest_state(device.id)
+            if latest is None:
+                continue
+            projected[device.id] = DeviceContextState(
+                device_id=device.id,
+                name=device.name,
+                device_type=device.device_type.value,
+                area=device.area,
+                state=latest.state.value,
+                attributes=latest.attributes or {},
+                updated_at=latest.observed_at,
+            )
+
+        async with self._lock:
+            merged: dict[str, DeviceContextState] = {}
+            changed = set(projected) != set(self._state.devices)
+            for device_id, candidate in projected.items():
+                current = self._state.devices.get(device_id)
+                if current is None or not _same_device_state(current, candidate):
+                    merged[device_id] = candidate
+                    changed = True
+                else:
+                    merged[device_id] = current
+            sensors = {
+                device_id: sensor
+                for device_id, sensor in self._state.sensors.items()
+                if device_id in merged
+            }
+            if sensors != self._state.sensors:
+                changed = True
+            if not changed:
+                return
+            self._state.devices = merged
+            self._state.sensors = sensors
+            self._state.updated_at = utc_now()
+            state = self.state
+
+        await asyncio.to_thread(self._save_snapshot, state)
+
+    async def apply_verified_state(
+        self,
+        device_id: str,
+        *,
+        state: str,
+        attributes: dict[str, Any],
+        observed_at: datetime,
+    ) -> None:
+        """Reflect a state that a device adapter confirmed after an Arvuno action."""
+        if self._registry is None:
+            return
+        device = await self._registry.get_by_id(device_id)
+        if device is None or not device.is_enabled:
+            return
+        observed = utc_timestamp(observed_at)
+
+        async with self._lock:
+            current = self._state.devices.get(device_id)
+            if current is not None and current.state == state and current.attributes == attributes:
+                return
+            self._state.devices[device_id] = DeviceContextState(
+                device_id=device_id,
+                name=device.name,
+                device_type=device.device_type.value,
+                area=device.area,
+                state=state,
+                attributes=dict(attributes),
+                updated_at=observed,
+            )
+            self._state.updated_at = observed
+            snapshot = self.state
+
+        await asyncio.to_thread(self._save_snapshot, snapshot)
 
     async def handle_event(self, event: ArvunoEvent) -> None:
         if event.event_type not in {
@@ -238,6 +330,19 @@ def area_summary(state: EnvironmentContextState) -> dict[str, dict[str, int | li
         }
         for area_name, devices in areas.items()
     }
+
+
+def _same_device_state(
+    current: DeviceContextState,
+    candidate: DeviceContextState,
+) -> bool:
+    return (
+        current.name == candidate.name
+        and current.device_type == candidate.device_type
+        and current.area == candidate.area
+        and current.state == candidate.state
+        and current.attributes == candidate.attributes
+    )
 
 
 def _device_type(

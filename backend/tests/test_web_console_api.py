@@ -176,14 +176,15 @@ def test_environment_apis_return_context_events_and_snapshots(
     assert summary["environment"]["environment_id"] is not None
     assert summary["environment"]["devices"][device_id]["name"] == "Virtual Living Room Light"
     assert summary["environment"]["devices"][device_id]["area"] == "Living Room"
-    assert summary["online_device_count"] == 1
+    assert len(summary["environment"]["devices"]) == 6
+    assert summary["online_device_count"] == 6
     assert summary["unavailable_device_ids"] == []
     assert summary["active_task_count"] == 0
     assert len(summary["recent_events"]) == 1
     assert summary["recent_events"][0]["subject_id"] == device_id
 
     assert snapshots.status_code == 200
-    assert snapshots.json()["total"] == 1
+    assert snapshots.json()["total"] == 2
     assert snapshots.json()["data"][0]["context"]["devices"][device_id]["state"] == "on"
 
 

@@ -1,0 +1,9 @@
+# Arvuno Core demo configuration.
+#
+# `default_config` loads the standard integrations; `demo` provides virtual
+# entities (light.bed_light, light.ceiling_lights, switch.ac, sensors, ...)
+# that behave like real devices. No physical hardware is required.
+
+default_config:
+
+demo:

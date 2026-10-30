@@ -21,6 +21,7 @@ app = create_app(
     unit_of_work_factory=unit_of_work,
     initialize_event_runtime=True,
     initialize_tool_runtime=True,
+    start_device_polling=True,
 )
 app.state.database_manager = database_manager
 

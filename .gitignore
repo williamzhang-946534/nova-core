@@ -28,6 +28,14 @@ data/
 *.sqlite3-shm
 backups/
 
+# Local assistant scratch space and generated acceptance artifacts
+.workbuddy/
+output/
+
+# Home Assistant demo runtime data (keep only the checked-in configuration.yaml)
+deploy/home-assistant-demo/config/*
+!deploy/home-assistant-demo/config/configuration.yaml
+
 # Editor and OS files
 .idea/
 .vscode/

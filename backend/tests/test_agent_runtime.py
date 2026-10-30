@@ -468,6 +468,68 @@ def test_chat_api_executes_queries_and_low_risk_control_through_task_steps(tmp_p
         manager.dispose()
 
 
+def test_validation_error_details_are_json_serializable() -> None:
+    environment = runtime_environment(
+        outputs=[candidate("environment_query", "control_device", {})]
+    )
+
+    result = asyncio.run(
+        environment.runtime.chat("message", correlation_id="correlation-json-safe")
+    )
+
+    payload = result.model_dump(mode="json")
+    assert payload["status"] == "failed"
+    assert payload["error"]["code"] == "AGENT_VALIDATION_ERROR"
+    errors = payload["error"]["details"]["errors"]
+    assert errors and isinstance(errors[0]["ctx"]["error"], str)
+
+
+def test_chat_api_surfaces_invalid_plan_as_structured_failure(tmp_path: Path) -> None:
+    settings = phase_settings(tmp_path)
+    manager = DatabaseManager(settings)
+    try:
+        manager.initialize_database()
+        device_id = prepare_devices(manager)
+
+        def factory() -> SqlAlchemyUnitOfWork:
+            return SqlAlchemyUnitOfWork(manager.session_factory)
+
+        provider = MockAIProvider(
+            SqlProviderLogStore(factory),
+            outputs=[
+                candidate(
+                    "environment_query",
+                    "control_device",
+                    {"device_id": device_id, "action": "turn_on"},
+                )
+            ],
+            log_id_factory=lambda: "provider-log-invalid-plan",
+        )
+        app = create_app(
+            settings,
+            unit_of_work_factory=factory,
+            ai_provider=provider,
+            initialize_event_runtime=True,
+            initialize_tool_runtime=True,
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/chat",
+                headers={"Authorization": "Bearer test-api-token"},
+                json={"message": "Turn on the light."},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()["data"]
+        assert payload["status"] == "failed"
+        assert payload["task_id"] is None
+        assert payload["error"]["code"] == "AGENT_VALIDATION_ERROR"
+        assert isinstance(payload["error"]["details"]["errors"][0]["ctx"]["error"], str)
+    finally:
+        manager.dispose()
+
+
 def test_chat_api_surfaces_confirmation_and_resumes_through_tool_executor(
     tmp_path: Path,
 ) -> None:

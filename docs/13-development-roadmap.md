@@ -321,7 +321,7 @@ Phase 8 已按最小可用范围完成并等待用户验收。实现包含系统
 
 ### 当前完成情况
 
-Phase 9 已按最小可用范围完成并等待用户验收。实现包含自动化规则与执行记录 Repository、Web Console 通知 Repository、规则启用/禁用、显式条件评估、三类设备上下文事件触发、冷却时间、并发串行化、`notification` 与 `tool` 两类动作、自动化 API、通知 API 和控制台页面。工具动作统一通过 Task System、TaskStep 和 Tool Executor 进入 Safety Policy；仅 `read_only` 与 `low_risk` 允许自动执行，`medium_risk` 与 `high_risk` 在创建任务前记录 `risk_rejected`。任务失败会生成错误级站内通知，correlation ID 从触发事件延续到自动化事件、任务和工具执行。普通定时、状态触发和场景自动化继续由 Home Assistant 管理，本阶段不提供通用自动化编辑器或多渠道通知。
+Phase 9 已按最小可用范围完成，并在 Phase 10 稳定化验收中复核。实现包含自动化规则与执行记录 Repository、Web Console 通知 Repository、规则启用/禁用、显式条件评估、三类设备上下文事件触发、冷却时间、并发串行化、`notification` 与 `tool` 两类动作、自动化 API、通知 API 和控制台页面。工具动作统一通过 Task System、TaskStep 和 Tool Executor 进入 Safety Policy；仅 `read_only` 与 `low_risk` 允许自动执行，`medium_risk` 与 `high_risk` 在创建任务前记录 `risk_rejected`。任务失败会生成错误级站内通知，correlation ID 从触发事件延续到自动化事件、任务和工具执行。普通定时、状态触发和场景自动化继续由 Home Assistant 管理，本阶段不提供通用自动化编辑器或多渠道通知。
 
 ## Phase 10：稳定化验收
 
@@ -355,6 +355,18 @@ Arvuno 能完成：
 ```
 
 设备异常、超时、模型错误和权限错误均有明确处理。
+
+### 当前完成情况
+
+Phase 10 稳定化验收已于 2026-10-30 执行，完整结果见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)。F1 环境上下文问题已补充修复并复验，真实 DeepSeek 8 条冒烟通过；真实 Home Assistant demo 的读取与低风险写链路也已通过。当前结论为**未完全通过真实环境验收**：30 项通过、0 项未通过、2 项未执行、3 项需要用户手动操作。
+
+已通过：189 个后端测试、Ruff 格式与静态检查、前端类型检查/构建/格式、9 项架构边界测试、API 认证与错误契约探测（两轮均通过）、日志脱敏、5 项配置安全护栏、10 项迁移与备份恢复、15 项任务链路端到端、Mock 与失败场景测试、Windows 启动脚本实跑、F1 环境一致性场景（14 项隔离实例探测）、真实 DeepSeek 8 条查询与控制冒烟。
+
+未通过：无。默认 Mock Provider 仍返回 `unsupported`，这是未配置真实 Provider 时的安全默认。
+
+未执行：真实 HA 断线重连、前端自动化测试（项目暂无前端测试框架）。
+
+已修复：F1 环境上下文为空（启动从 Device Registry 投影、验证成功后同步、自身控制不发布设备状态事件）、后台轮询从未启动、Windows 启动脚本编码导致解析失败、`.env.example` 误用 `ARVUNO_ENV`、复制示例配置后因空 URL 无法启动、配置错误信息变量名不一致、模型校验错误明细无法序列化导致 `/api/chat` 500。
 
 ## 推荐开发顺序
 
@@ -430,6 +442,6 @@ Arvuno 能完成：
 
 ## 第一阶段开始建议
 
-Arvuno Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统、安全工具执行、任务系统基础、AI Agent、Web 控制台和自动化通知最小闭环。下一阶段应从第一阶段稳定化验收开始，继续保持小模块和明确安全边界。
+Arvuno Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统、安全工具执行、任务系统基础、AI Agent、Web 控制台和自动化通知最小闭环。Phase 10 稳定化验收已执行，发现 2 项需要产品决策的问题，因此第一阶段尚未宣布收尾。下一阶段应从这两项修复和真实 Home Assistant 只读验收开始，继续保持小模块和明确安全边界。
 
-Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务失败提醒。真实 Home Assistant 写操作与真实模型调用保持默认关闭。Phase 9 等待用户验收，确认后才进入 Phase 10 稳定化验收。
+Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务失败提醒。真实 Home Assistant 写操作验收后已恢复默认关闭，真实模型只在显式配置后启用。Phase 10 的 F1 已修复并复验，真实 DeepSeek 冒烟通过，真实 Home Assistant demo 读/写链路通过；剩余真实 HA 断线重连与浏览器完整验收等待用户处理后再继续。

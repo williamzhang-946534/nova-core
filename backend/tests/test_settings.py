@@ -84,3 +84,27 @@ def test_event_retention_settings_are_configurable() -> None:
 
     with pytest.raises(ValidationError, match="greater than or equal to 1"):
         settings(event_retention_days=0)
+
+
+def test_env_example_can_be_loaded_without_editing() -> None:
+    example_path = PROJECT_ROOT / ".env.example"
+
+    test_settings = Settings(_env_file=example_path)
+
+    assert test_settings.environment == "development"
+    assert test_settings.home_assistant_url is None
+    assert test_settings.home_assistant_token is None
+    assert test_settings.ai_api_key is None
+    assert test_settings.home_assistant_write_enabled is False
+
+
+def test_blank_optional_secrets_and_urls_are_treated_as_missing() -> None:
+    test_settings = settings(
+        home_assistant_url="",
+        home_assistant_token="",
+        ai_api_key="",
+    )
+
+    assert test_settings.home_assistant_url is None
+    assert test_settings.home_assistant_token is None
+    assert test_settings.ai_api_key is None

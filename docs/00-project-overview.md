@@ -5,12 +5,12 @@
 | 项目 | 状态 |
 | --- | --- |
 | 项目目录 | `E:\williamzhang\zzh\zzh-personal-project\nova` |
-| 当前阶段 | Phase 7 AI Provider 与 Agent Runtime 已完成（待用户验收） |
-| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、历史查询、任务事件、AI Provider、Mock Provider、Agent Runtime 和 `/api/chat` 已初始化 |
+| 当前阶段 | Phase 10 稳定化验收已执行，F1 已修复复验，真实 DeepSeek 冒烟通过（真实 HA 待验收，见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)） |
+| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、历史查询、任务事件、AI Provider、Mock Provider、Agent Runtime、`/api/chat`、Web 控制台和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 读/写链路已接入并冒烟通过，实体硬件和 HA 断线重连仍未验收 |
 | 架构确认 | 已确认 |
 | 第一阶段运行环境 | Windows 11 本地 |
 
-本文档集是 Arvuno Core 的架构基线。架构已获得确认，Phase 7 已完成 AI Provider 与 Agent Runtime 代码；自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter、Mock AI Provider 和显式候选计划，尚未连接真实 Home Assistant，也不包含 Memory、会话持久化、Agent 自主规划、自动化引擎、通知系统或业务功能。
+本文档集是 Arvuno Core 的架构基线。架构已获得确认，Phase 0–9 的代码已完成，Phase 10 稳定化验收已执行并留下报告。自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter、Mock AI Provider 和显式候选计划；真实模型与真实 Home Assistant demo 已做限定范围验收，但代码仍不包含 Memory、会话持久化、Agent 自主规划或多渠道通知。
 
 ## 项目背景
 
@@ -98,6 +98,8 @@ Arvuno Core 第一阶段需要逐步具备以下能力：
 | [13-development-roadmap.md](13-development-roadmap.md) | 分阶段开发计划和验收标准 |
 | [14-decisions-and-tradeoffs.md](14-decisions-and-tradeoffs.md) | 关键架构决策和取舍 |
 | [15-future-extension.md](15-future-extension.md) | 未来扩展接口与不提前实现的内容 |
+| [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md) | Phase 10 稳定化验收结果 |
+| [17-real-home-assistant-acceptance.md](17-real-home-assistant-acceptance.md) | 真实 Home Assistant demo 验收手册 |
 
 ## 核心术语
 
@@ -125,4 +127,4 @@ Arvuno Core 应采用 Windows 本地运行的模块化单体架构。第一阶�
 3. Agent 只产生候选意图和计划，不接触数据库实现、SQL 或设备协议客户端。
 4. 机器人只在 [15-future-extension.md](15-future-extension.md) 中作为远期方向记录，当前模块清单和接口设计中没有机器人模块。
 
-Phase 7 完成后等待用户验收。真实 Home Assistant 写操作和真实模型调用均保持默认关闭；未经用户确认，不应进入 Phase 8 Web 控制台或后续业务功能开发。
+Phase 10 稳定化验收已执行，F1 环境上下文问题已补充修复并复验，真实 DeepSeek 与真实 Home Assistant demo 读/写链路已通过，结果见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)。真实 Home Assistant 写操作保持默认关闭；真实模型只在显式配置后启用。真实 HA 断线重连与浏览器完整验收完成前，不应进入第一阶段收尾或新功能开发。

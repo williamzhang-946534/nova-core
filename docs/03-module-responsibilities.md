@@ -214,6 +214,7 @@ Agent 需要一个稳定上下文来理解当前状态、最近事件、用户�
 
 **输入：**
 
+- Device Registry 的最新设备状态（启动时投影、设备控制验证成功后同步）
 - Device State
 - Sensor Data
 - Device Event
@@ -244,6 +245,7 @@ Agent 需要一个稳定上下文来理解当前状态、最近事件、用户�
 - 设备控制
 - 事件持久化
 - 模型调用
+- 直接读写数据库底层表（状态来源通过 Device Registry 和 Event System 提供）
 
 **测试方式：**
 

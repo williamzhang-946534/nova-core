@@ -53,3 +53,25 @@ def test_poller_emits_unavailable_for_offline_device() -> None:
 
     assert [event.event_type.value for event in events] == ["device_unavailable"]
     assert events[0].payload["current_state"] == "unavailable"
+
+
+def test_poller_emits_state_change_when_offline_device_recovers() -> None:
+    adapter = MockDeviceAdapter()
+
+    async def resolver(_adapter_id: str, _external_id: str) -> str:
+        return "arvuno-device"
+
+    poller = DeviceStatePoller(adapter, ["mock.switch.airer"], resolver)
+    asyncio.run(poller.poll_once())
+
+    adapter.set_offline("mock.switch.airer")
+    offline_events = asyncio.run(poller.poll_once())
+    assert [event.event_type.value for event in offline_events] == ["device_unavailable"]
+
+    adapter.set_offline("mock.switch.airer", offline=False)
+    asyncio.run(adapter.set_state("mock.switch.airer", DeviceStateName.ON))
+    recovery_events = asyncio.run(poller.poll_once())
+
+    assert [event.event_type.value for event in recovery_events] == ["device_state_changed"]
+    assert recovery_events[0].payload["previous_state"] == "unavailable"
+    assert recovery_events[0].payload["current_state"] == "on"

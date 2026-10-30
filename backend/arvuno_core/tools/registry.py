@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
@@ -5,7 +6,11 @@ from typing import Any, Generic, TypeVar
 from pydantic import BaseModel
 
 from arvuno_core.devices.service import DeviceApplicationService
-from arvuno_core.environment.context import EnvironmentContextState, area_summary
+from arvuno_core.environment.context import (
+    EnvironmentContextState,
+    EnvironmentStateSink,
+    area_summary,
+)
 from arvuno_core.tools.models import (
     ControlDeviceInput,
     ControlDeviceOutput,
@@ -23,6 +28,8 @@ from arvuno_core.tools.models import (
 ToolInputT = TypeVar("ToolInputT", bound=BaseModel)
 ToolOutputT = TypeVar("ToolOutputT", bound=BaseModel)
 ToolHandler = Callable[[ToolExecutionContext, Any], Awaitable[BaseModel]]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,7 @@ def build_default_tool_registry(
     device_service: DeviceApplicationService,
     *,
     environment_state_provider: Callable[[], EnvironmentContextState] | None = None,
+    environment_state_sink: EnvironmentStateSink | None = None,
 ) -> ToolRegistry:
     async def list_devices(
         _context: ToolExecutionContext,
@@ -165,6 +173,19 @@ def build_default_tool_registry(
             parameters=raw_input.parameters,
             expected_state=raw_input.expected_state,
         )
+        if result.verified and environment_state_sink is not None:
+            try:
+                await environment_state_sink.apply_verified_state(
+                    raw_input.device_id,
+                    state=result.actual_state,
+                    attributes=result.attributes,
+                    observed_at=result.observed_at,
+                )
+            except Exception:
+                logger.exception(
+                    "environment_state_sync_failed",
+                    extra={"payload": {"device_id": raw_input.device_id}},
+                )
         return ControlDeviceOutput(
             device_id=raw_input.device_id,
             action=raw_input.action,

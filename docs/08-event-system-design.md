@@ -44,7 +44,7 @@ Event System 为 Arvuno 提供统一的事件表示、分发、持久化和查�
 
 ### `device_state_changed`
 
-设备状态发生明显变化。
+设备状态发生明显变化。该事件由设备平台订阅或轮询对账产生，不由 Arvuno 自身发起的控制动作回写产生。
 
 Payload：
 
@@ -168,6 +168,16 @@ Payload：
 | `automation` | Automation Engine |
 | `api` | API Layer |
 | `system` | 系统组件 |
+
+## 事件边界：外部变化与 Arvuno 自身动作
+
+两类状态来源使用不同的事件语义，避免自动化规则因自身动作形成触发循环：
+
+1. **外部状态变化**：设备平台推送或轮询对账发现状态差异时，发布 `device_state_changed`、`sensor_updated` 或 `device_unavailable`。Environment Context 更新摘要，Automation Engine 按三类设备事件评估规则。
+2. **Arvuno 自身控制**：设备动作仍经过 Safety Policy、Tool Executor、Adapter 执行和状态验证。验证成功后更新 Device Registry，并由应用层同步 Environment Context。该动作**不发布** `device_state_changed`，继续由 `task_started`、`tool_executed`、`task_completed` 等任务与工具事件追踪。
+3. 控制失败、设备离线、超时或状态验证失败时，不向 Environment Context 写入目标状态，也不产生成功事件。
+
+因此，当前阶段自动化规则的触发范围仍仅限外部设备事件；Arvuno 自身的控制结果通过任务历史和工具审计观测，不进入自动化触发链路。
 
 ## 应用内事件总线
 
