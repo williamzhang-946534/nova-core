@@ -199,6 +199,8 @@ class HomeAssistantAdapter:
             raise AuthorizationError("Home Assistant authorization failed.")
         if response.status_code == 404:
             raise DeviceNotFoundError("The Home Assistant entity does not exist.")
+        if response.status_code >= 500:
+            raise AdapterUnavailableError("Home Assistant returned an unavailable response.")
         if response.status_code >= 400:
             raise ActionFailedError("Home Assistant returned an unexpected error.")
         entity = response.json()
@@ -296,6 +298,8 @@ class HomeAssistantAdapter:
             raise AuthorizationError("Home Assistant authorization failed.")
         if status_code == 404:
             raise DeviceNotFoundError("The Home Assistant entity does not exist.")
+        if status_code >= 500:
+            raise AdapterUnavailableError("Home Assistant is unavailable.")
         if status_code >= 400:
             raise ActionFailedError("Home Assistant rejected the action.")
 

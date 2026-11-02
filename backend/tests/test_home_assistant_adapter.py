@@ -9,6 +9,7 @@ from pydantic import SecretStr
 from arvuno_core.config import Settings
 from arvuno_core.devices.errors import (
     AdapterTimeoutError,
+    AdapterUnavailableError,
     AuthorizationError,
     DeviceNotFoundError,
     DeviceUnavailableError,
@@ -343,3 +344,22 @@ def test_home_assistant_health_recovers_after_transient_connection_failure() -> 
     assert first.status == "disconnected"
     assert second.status == "healthy"
     assert calls["count"] == 2
+
+
+def test_home_assistant_upstream_5xx_is_adapter_unavailable() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502)
+
+    async def scenario() -> Exception:
+        http = client(handler)
+        adapter = HomeAssistantAdapter(ha_settings(), client=http)
+        try:
+            await adapter.get_state("light.living_room")
+        except Exception as exc:
+            error = exc
+        await http.aclose()
+        return error
+
+    error = run(scenario())
+    assert isinstance(error, AdapterUnavailableError)
+    assert "local-test-token" not in str(error)

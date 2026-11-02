@@ -32,6 +32,11 @@ from arvuno_core.api.tools import router as tools_router
 from arvuno_core.automation.notifications import NotificationService
 from arvuno_core.automation.service import AutomationService
 from arvuno_core.config import Settings, get_settings
+from arvuno_core.devices.errors import (
+    AdapterTimeoutError,
+    DeviceError,
+    DeviceNotFoundError,
+)
 from arvuno_core.devices.home_assistant import HomeAssistantAdapter
 from arvuno_core.devices.mock import MockDeviceAdapter
 from arvuno_core.devices.polling_runtime import DevicePollingRuntime
@@ -329,6 +334,29 @@ def create_app(
                     "code": exc.code,
                     "message": exc.message,
                     "details": exc.details,
+                    "correlation_id": correlation_id_var.get(),
+                }
+            ).model_dump(),
+        )
+
+    @app.exception_handler(DeviceError)
+    async def handle_device_error(request: Request, exc: DeviceError) -> JSONResponse:
+        if isinstance(exc, DeviceNotFoundError):
+            status_code = 404
+            code = "NOT_FOUND"
+        elif isinstance(exc, AdapterTimeoutError):
+            status_code = 504
+            code = "ADAPTER_TIMEOUT"
+        else:
+            status_code = 502
+            code = "ADAPTER_ERROR"
+        return JSONResponse(
+            status_code=status_code,
+            content=ErrorResponse(
+                error={
+                    "code": code,
+                    "message": str(exc),
+                    "details": {"device_code": exc.code, "detail": exc.detail},
                     "correlation_id": correlation_id_var.get(),
                 }
             ).model_dump(),

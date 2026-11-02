@@ -107,4 +107,4 @@ docker compose down -v   # 删除容器与数据卷
 
 ## 9. 与 Phase 10 报告的对应
 
-完成后，`docs/16-phase10-acceptance-report.md` 中"未执行"的真实 HA 项即可更新为"已通过"。真实硬件接入路径与本手册完全一致：只需把 allowlist 换成一个真实低风险实体 ID。
+读取、低风险写入和断线/重连已完成；`docs/16-phase10-acceptance-report.md` 中的真实 HA 项已更新为"已通过"，证据见其 11.6 和 11.7 节。真实硬件接入路径与本手册完全一致：只需把 allowlist 换成一个真实低风险实体 ID。

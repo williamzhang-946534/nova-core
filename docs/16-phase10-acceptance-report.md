@@ -1,19 +1,19 @@
 # 16. Phase 10 稳定化验收报告
 
-- 验收日期：2026-10-30（WorkBuddy 首轮验收 + Codex 独立复跑）
+- 验收日期：2026-10-30（WorkBuddy 首轮验收 + Codex 独立复跑）；2026-11-02 补充真实 HA 断线/重连验收
 - 验收对象：Arvuno Core（仓库目录仍为 `nova`），代码版本 `0bea8bc` + 本轮修复
 - 验收范围：`docs/13-development-roadmap.md` Phase 10 全部任务，以及 `docs/12-testing-strategy.md` 的 A1–A8 验收场景
 - 验收方式：可重复的自动化测试 + 隔离实例的真实 HTTP 探测 + 进程级端到端脚本；不依赖真实 AI API 或真实设备
-- 总体判定：**未完全通过**。核心执行链路（任务 → 工具 → 验证 → 审计 → 历史）通过；F1 已于 2026-10-30 补充修复并复验，剩余 F2 与真实环境验收尚未完成。
+- 总体判定：**待浏览器人工复核**。核心执行链路（任务 → 工具 → 验证 → 审计 → 历史）、真实模型冒烟、真实 HA demo 读/写链路和真实 HA 断线/重连均已通过；剩余人工项是 Web Console 逐页与移动端宽度复核。
 
 ## 1. 结果统计
 
 | 分类 | 数量 | 说明 |
 | --- | --- | --- |
-| 已通过 | 30 | 有命令输出、测试或实机复跑证据；含 F1 修复后复验与真实 Home Assistant demo 读写链路 |
+| 已通过 | 31 | 有命令输出、测试或实机复跑证据；含 F1 修复后复验、真实 Home Assistant demo 读写链路与断线/重连 |
 | 未通过 | 0 | F2 已通过配置真实 Provider 验证，默认 Mock 行为保持不变 |
-| 未执行 | 2 | 缺少前置条件或环境中不存在该能力，见第 6 节 |
-| 需要用户手动操作 | 3 | 见第 7 节 |
+| 未执行 | 1 | 缺少前置条件或环境中不存在该能力，见第 6 节 |
+| 需要用户手动操作 | 2 | 见第 7 节 |
 
 本轮共运行 3 类探测脚本（API 契约、备份恢复、端到端任务链）与 1 类运行时探测，全部使用隔离端口与隔离数据目录，未触碰 `data/`、`logs/`、`backups/` 中的既有数据。
 
@@ -39,7 +39,7 @@
 | 2 | 补齐验收测试 | 已通过 | 新增用例覆盖断线恢复、配置缺失、轮询运行时、环境一致性、真实模型错误序列化 |
 | 3 | 检查日志和脱敏 | 已通过 | 日志中 Token / Authorization / api_key 命中数均为 0 |
 | 4 | 验证备份恢复 | 已通过 | 10 项探测全部通过，含拒绝路径与保留策略 |
-| 5 | 验证断线重连 | 部分通过 | 单测覆盖断开→恢复；真实 HA 重连未执行 |
+| 5 | 验证断线重连 | 已通过 | 真实 Docker HA 停止后返回结构化 `502 ADAPTER_ERROR`；重启后状态读取恢复，只读验收 5/5 |
 | 6 | 验证 Mock 全流程 | 已通过 | F1 修复后 14/14 复验通过；真实模型 8/8 冒烟通过 |
 | 7 | 验证真实 HA 全流程 | 已通过（demo） | HA 4/4；Arvuno 只读 5/5；临时开启写操作后 8/8，验证后恢复只读 |
 | 8 | 更新文档 | 已执行 | README、docs/00、docs/13、AGENTS.md、.env.example 已同步 |
@@ -50,11 +50,11 @@
 
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
-| 全量测试 | `python -m pytest backend/tests` | **189 passed**（F1 + 真实模型冒烟后），1 warning（Starlette 弃用提示） |
+| 全量测试 | `python -m pytest backend/tests` | **191 passed**（断线错误契约修复后），1 warning（Starlette 弃用提示） |
 | 格式检查 | `python -m ruff format --check backend` | 120 files already formatted |
 | 静态检查 | `python -m ruff check backend` | All checks passed |
 
-测试规模：29 个测试文件、153 个测试函数（参数化后 189 个用例）、90 个后端模块。
+测试规模：29 个测试文件、155 个测试函数（参数化后 191 个用例）、90 个后端模块。
 
 ### 4.2 前端检查
 
@@ -286,7 +286,6 @@ Web 实测中，环境页显示“暂无设备事件写入上下文”和 0 台�
 
 | 项 | 原因 | 说明 |
 | --- | --- | --- |
-| 真实 HA 断线/重连 | 本轮未执行 | 单测已用 MockTransport 覆盖断连与恢复，真实网络行为未验证 |
 | 前端单元/组件/契约测试 | 项目无前端测试框架（无 `test` 脚本、无 vitest/jest） | 与 `docs/12` 的合同测试要求存在差距，建议后续补充 |
 
 另：WebSocket 推送按设计未实现（Phase 8 起明确使用轮询），不计为缺陷；真实设备写操作保持关闭，符合安全要求。
@@ -294,14 +293,16 @@ Web 实测中，环境页显示“暂无设备事件写入上下文”和 0 台�
 ## 7. 需要用户手动操作
 
 1. **在 `.env` 中把 `ARVUNO_ENV` 改为 `ARVUNO_ENVIRONMENT`**。Pydantic Settings 只识别 `ARVUNO_ENVIRONMENT`，旧变量名被静默忽略；当前值为 `development` 所以行为未变，但若将来改为 `production`，生产环境护栏不会生效。`.env.example` 已修正，本地 `.env` 未改动。
-2. **验收真实 HA 断线/重连**：短暂停止 Docker 中的 Home Assistant 容器，确认后端任务失败且不伪造成功，再恢复容器并确认轮询恢复。
-3. **在浏览器中完整复核控制台**（概览、设备、环境、事件、对话、任务、自动化、通知、设置），并补充移动端宽度抽查。
+2. **在浏览器中完整复核控制台**（概览、设备、设备详情、环境、事件、AI 对话、任务、自动化、通知、设置），并补充移动端宽度抽查。
 
 ## 8. 本轮修复清单
 
 | 文件 | 变更 | 依据 |
 | --- | --- | --- |
 | `backend/arvuno_core/devices/polling_runtime.py` | 新增：后台轮询运行时，复用 `EnvironmentReconciler` 与 `DeviceEventService` | 轮询组件存在但从未启动，运行时无任何设备事件 |
+| `backend/arvuno_core/devices/home_assistant.py` | 2026-11-02 补充：Home Assistant 上游 5xx 映射为 `AdapterUnavailableError` | 停止容器时 Docker 代理返回 502，原实现误归为普通动作失败 |
+| `backend/arvuno_core/app.py` | 2026-11-02 补充：设备错误映射为结构化 API 错误；适配器不可用为 `502 ADAPTER_ERROR`，超时为 `504 ADAPTER_TIMEOUT` | 直达 API 路径缺少设备错误映射，HA 断线时泛化为 500 |
+| `backend/tests/test_home_assistant_adapter.py`、`backend/tests/test_error_contract.py` | 新增 2 个用例：HA 上游 5xx 归类、API 设备错误契约 | 覆盖上述断线错误契约修复 |
 | `backend/arvuno_core/app.py` | 新增 `start_device_polling` 参数并在 lifespan 启停运行时；启动顺序调整为"先同步设备，再初始化环境" | 同上 |
 | `backend/arvuno_core/main.py` | 真实启动路径开启轮询 | 同上 |
 | `backend/tests/test_polling_runtime.py` | 新增 3 个用例：装配、opt-in、事件与环境更新 | 补齐验收测试 |
@@ -330,15 +331,14 @@ Web 实测中，环境页显示“暂无设备事件写入上下文”和 0 台�
 
 ## 10. 结论与下一步
 
-Phase 10 的自动化、安全与审计部分已经达到可交付状态：189 个后端测试、前端类型/构建/格式、API 契约、备份恢复、任务与失败链路均有可重复证据。启动脚本的编码缺陷、轮询未接入和 F1 环境上下文问题已修复并复验。
+Phase 10 的自动化、安全与审计部分已经达到可交付状态：191 个后端测试、前端类型/构建/格式、API 契约、备份恢复、任务与失败链路均有可重复证据。启动脚本的编码缺陷、轮询未接入和 F1 环境上下文问题已修复并复验。
 
-剩余未完成项是真实 HA 断线/重连与浏览器完整复核。真实 Home Assistant demo 的读取和低风险写链路已通过（见 11.6）。F2 已在本机通过配置真实 DeepSeek Provider 验证（见 11.5）；默认 Mock Provider 仍保持 `unsupported` 行为，以免离线环境伪造执行。
+剩余未完成项是浏览器完整复核。真实 Home Assistant demo 的读取、低风险写链路和断线/重连已通过（见 11.6 和 11.7）。F2 已在本机通过配置真实 DeepSeek Provider 验证（见 11.5）；默认 Mock Provider 仍保持 `unsupported` 行为，以免离线环境伪造执行。
 
 建议顺序：
 
-1. 对真实 HA demo 执行停止、恢复和轮询复核。
-2. 在浏览器中逐页复核控制台，并抽查移动端宽度。
-3. 上述通过后，再宣布第一阶段验收完成。
+1. 在浏览器中逐页复核控制台，并抽查移动端宽度。
+2. 上述通过后，再宣布第一阶段验收完成。
 
 本报告完成后停止，未进入任何新功能开发或下一阶段规划。
 
@@ -390,7 +390,7 @@ Phase 10 的自动化、安全与审计部分已经达到可交付状态：189 �
 ### 11.4 未解决
 
 - F2 的默认行为保持原状：未配置真实 Provider 时，Mock Provider 仍返回 `unsupported`。
-- 真实 HA 断线/重连和浏览器逐页验收仍未执行；真实模型调用与真实 HA demo 读/写链路已于 2026-10-30 完成验收，见 11.5 和 11.6。
+- 浏览器逐页验收仍未执行；真实模型调用、真实 HA demo 读/写链路和断线/重连已验收，见 11.5 至 11.7。
 - 自身控制不产生 `device_state_changed` 是有意取舍，依赖该事件的自动化不会对自身动作响应；若未来需要，必须单独设计循环保护。
 
 ### 11.5 真实模型冒烟（2026-10-30）
@@ -427,4 +427,24 @@ Phase 10 的自动化、安全与审计部分已经达到可交付状态：189 �
 | Arvuno 写验收 | 8/8 通过 | 控制任务 completed、`validation.verified=true`、HA 与 Arvuno 最终状态均为 off |
 | 恢复安全态复验 | 5/5 通过 | backend 重启后 `home_assistant_write_enabled=false`，只读链路正常 |
 
-本阶段已完成的 A3、A4 和 A7 真实 HA demo 验证不能等同为实体硬件验收；真实 HA 断线/重连、A8 真实设备异常、浏览器完整复核和移动端抽查仍在待办中。
+本阶段已完成的 A3、A4 和 A7 真实 HA demo 验证不能等同为实体硬件验收；A8 真实设备异常、浏览器完整复核和移动端抽查仍在待办中。
+
+### 11.7 真实 HA 断线/重连验收（2026-11-02）
+
+本轮继续使用 Docker 中的真实 Home Assistant demo 实例和 `light.bed_light`。`ARVUNO_HOME_ASSISTANT_WRITE_ENABLED` 保持 `false`，只验证读取、错误契约和恢复。
+
+| 步骤 | 结果 | 关键证据 |
+| --- | --- | --- |
+| 断线前基线 | 通过 | `/health` 正常；`ha_configured=true`；`write_enabled=false`；Bed Light 为 `off`；`verified=true`；`from_cache=false`；前端 200 |
+| 停止 HA 容器 | 通过 | 设备状态接口不再伪造成功；原先曾返回泛化 `500 INTERNAL_ERROR` |
+| 断线错误契约修复 | 通过 | 修复后返回 `502 ADAPTER_ERROR`、`device_code=adapter_unavailable`，并携带 correlation ID |
+| 重启 HA 容器 | 通过 | HA API 就绪后，Bed Light 状态恢复为 `off`、`verified=true`、`from_cache=false` |
+| 只读验收复跑 | 5/5 通过 | HA 配置、写默认关闭、设备投影、状态读取、环境上下文全部通过 |
+
+根因与修复：
+
+- 停止容器后，本机 Docker 端口代理对 `light.bed_light` 状态请求返回 HTTP 502；原适配器把所有 `>=400` 状态都归为 `ActionFailedError`，直达 API 又没有映射设备错误，最终暴露成 `500 INTERNAL_ERROR`。
+- `HomeAssistantAdapter` 现在把上游 5xx 识别为 `AdapterUnavailableError`；应用层把设备适配器不可用映射为 `502 ADAPTER_ERROR`，超时映射为 `504 ADAPTER_TIMEOUT`，设备不存在映射为 `404 NOT_FOUND`。
+- 新增 2 个回归用例后，后端全量测试为 **191 passed**；Ruff 静态与格式检查通过。验收结束后 HA 容器保持运行。
+
+该项不能等同于实体硬件断电或网络分区验收，但已覆盖“真实 HA 进程不可用 → Arvuno 明确失败 → HA 恢复 → 状态轮询恢复”的本地真实链路。

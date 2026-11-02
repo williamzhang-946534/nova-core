@@ -5,8 +5,8 @@
 | 项目 | 状态 |
 | --- | --- |
 | 项目目录 | `E:\williamzhang\zzh\zzh-personal-project\nova` |
-| 当前阶段 | Phase 10 稳定化验收已执行，F1 已修复复验，真实 DeepSeek 冒烟通过（真实 HA 待验收，见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)） |
-| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、历史查询、任务事件、AI Provider、Mock Provider、Agent Runtime、`/api/chat`、Web 控制台和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 读/写链路已接入并冒烟通过，实体硬件和 HA 断线重连仍未验收 |
+| 当前阶段 | Phase 10 稳定化验收接近收尾，F1 已修复复验，真实 DeepSeek 与真实 HA demo 读/写、断线/重连均已通过；仅剩 Web Console 人工逐页复核（见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)） |
+| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、历史查询、任务事件、AI Provider、Mock Provider、Agent Runtime、`/api/chat`、Web 控制台和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 读/写链路、断线/重连已接入并冒烟通过，实体硬件仍未验收 |
 | 架构确认 | 已确认 |
 | 第一阶段运行环境 | Windows 11 本地 |
 
@@ -127,4 +127,4 @@ Arvuno Core 应采用 Windows 本地运行的模块化单体架构。第一阶�
 3. Agent 只产生候选意图和计划，不接触数据库实现、SQL 或设备协议客户端。
 4. 机器人只在 [15-future-extension.md](15-future-extension.md) 中作为远期方向记录，当前模块清单和接口设计中没有机器人模块。
 
-Phase 10 稳定化验收已执行，F1 环境上下文问题已补充修复并复验，真实 DeepSeek 与真实 Home Assistant demo 读/写链路已通过，结果见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)。真实 Home Assistant 写操作保持默认关闭；真实模型只在显式配置后启用。真实 HA 断线重连与浏览器完整验收完成前，不应进入第一阶段收尾或新功能开发。
+Phase 10 稳定化验收已执行，F1 环境上下文问题已补充修复并复验，真实 DeepSeek 与真实 Home Assistant demo 读/写链路、断线/重连已通过，结果见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)。真实 Home Assistant 写操作保持默认关闭；真实模型只在显式配置后启用。浏览器完整人工复核完成前，不应进入第一阶段收尾或新功能开发。

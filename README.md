@@ -2,7 +2,7 @@
 
 Arvuno Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **Phase 10 稳定化验收已执行，真实 DeepSeek 冒烟通过、真实 Home Assistant demo 读/写链路通过** 状态，详见 [Phase 10 验收报告](docs/16-phase10-acceptance-report.md)。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、显式任务计划执行、任务历史、任务事件、correlation ID 追踪、统一 AI Provider Interface、OpenAI-compatible Provider、Mock AI Provider、结构化候选输出校验、模型调用日志、`/api/chat` 自然语言入口、Web 控制台核心页面、少量 Arvuno 上下文自动化规则和 Web Console 站内通知；尚未验收实体硬件与真实 HA 断线重连，也未实现 Memory、会话持久化、Agent 自主规划、通用自动化编辑器或多渠道通知。
+当前项目处于 **Phase 10 稳定化验收接近收尾，真实 DeepSeek 冒烟通过，真实 Home Assistant demo 读/写链路与断线/重连通过** 状态，详见 [Phase 10 验收报告](docs/16-phase10-acceptance-report.md)。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、显式任务计划执行、任务历史、任务事件、correlation ID 追踪、统一 AI Provider Interface、OpenAI-compatible Provider、Mock AI Provider、结构化候选输出校验、模型调用日志、`/api/chat` 自然语言入口、Web 控制台核心页面、少量 Arvuno 上下文自动化规则和 Web Console 站内通知；尚未验收实体硬件，也未实现 Memory、会话持久化、Agent 自主规划、通用自动化编辑器或多渠道通知。
 
 ## 开发环境与常用命令
 
@@ -233,10 +233,10 @@ Home Assistant 负责设备集成、设备状态、设备控制和智能家居�
 
 ## 当前阶段结论
 
-Phase 10 稳定化验收已执行，F1 环境上下文问题已补充修复并复验，真实 DeepSeek 模型 8 条冒烟通过；真实 Home Assistant demo 读取、低风险控制、验证与环境同步也已通过，结果记录在 [docs/16-phase10-acceptance-report.md](docs/16-phase10-acceptance-report.md)：30 项通过、0 项未通过、2 项未执行、3 项需用户手动操作。
+Phase 10 稳定化验收已执行，F1 环境上下文问题已补充修复并复验，真实 DeepSeek 模型 8 条冒烟通过；真实 Home Assistant demo 读取、低风险控制、验证、环境同步与断线/重连也已通过，结果记录在 [docs/16-phase10-acceptance-report.md](docs/16-phase10-acceptance-report.md)：31 项通过、0 项未通过、1 项未执行、2 项需用户手动操作。
 
-- 已通过：189 个后端测试、前端类型检查与构建、架构边界、API 认证与错误契约、日志脱敏、配置护栏、迁移与备份恢复、Mock 任务链路端到端、Windows 启动脚本、环境上下文一致性（启动投影、验证后同步、无自触发）、真实 DeepSeek 查询与低风险控制、真实 HA demo 读取与低风险控制。
+- 已通过：191 个后端测试、前端类型检查与构建、架构边界、API 认证与错误契约、日志脱敏、配置护栏、迁移与备份恢复、Mock 任务链路端到端、Windows 启动脚本、环境上下文一致性（启动投影、验证后同步、无自触发）、真实 DeepSeek 查询与低风险控制、真实 HA demo 读取与低风险控制、真实 HA 断线/重连。
 - 未通过：无。默认 Mock Provider 仍返回 `unsupported`，这是离线安全默认，不是缺陷。
-- 未执行：真实 HA 断线重连、前端自动化测试（项目暂无前端测试框架）。
+- 未执行：前端自动化测试（项目暂无前端测试框架）。
 
-真实 Home Assistant 断线重连、实体硬件和浏览器完整验收完成前，不进入第一阶段收尾，也不开发新功能。语音、视觉、机器人、多 Agent、分布式系统、自研智能家居协议和商业 SaaS 均暂不开发；机器人只保留在未来扩展文档中评估，不预留当前接口。
+浏览器完整人工验收通过前，不宣布第一阶段收尾，也不开发新功能；实体硬件验收不阻塞当前 demo 验收结论。语音、视觉、机器人、多 Agent、分布式系统、自研智能家居协议和商业 SaaS 均暂不开发；机器人只保留在未来扩展文档中评估，不预留当前接口。
