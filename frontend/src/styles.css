@@ -3,6 +3,8 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -19,6 +21,19 @@ body {
 
 .app-shell {
   min-height: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ant-layout {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ant-layout-content,
+.page-stack > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .app-sider {
@@ -61,8 +76,11 @@ body {
 
 .page-stack {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   gap: 16px;
+  overflow-wrap: anywhere;
 }
 
 .page-header {
@@ -87,14 +105,40 @@ body {
 
 .metric-grid {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 16px;
 }
 
 .two-column {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(2, minmax(320px, 1fr));
   gap: 16px;
+}
+
+.ant-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ant-card-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ant-table-wrapper {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ant-table-wrapper .ant-table-content,
+.ant-table-wrapper .ant-table-body {
+  overflow-x: auto;
+}
+
+.ant-table-wrapper .ant-table-container table {
+  min-width: max-content;
 }
 
 .filter-bar .ant-input,
@@ -119,6 +163,7 @@ body {
     Consolas,
     monospace;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .clickable-row {
@@ -280,5 +325,30 @@ body {
 
   .chat-input {
     grid-template-columns: 1fr;
+  }
+
+  .filter-bar > .ant-space-item {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .filter-bar .ant-input,
+  .filter-bar .ant-select,
+  .fixed-select {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 991px) {
+  .app-sider .ant-layout-sider-zero-width-trigger {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 20;
+  }
+
+  .app-header {
+    padding-right: 60px;
   }
 }

@@ -45,12 +45,18 @@ export default function EventsPage() {
   const columns: ColumnsType<EventSummary> = [
     { title: "时间", dataIndex: "occurred_at", render: formatDateTime, width: 190 },
     { title: "事件", dataIndex: "event_type", render: (value: string) => <Tag>{value}</Tag> },
-    { title: "来源", dataIndex: "source" },
-    { title: "对象", dataIndex: "subject_id", render: (value: string | null) => value ?? "-" },
+    { title: "来源", dataIndex: "source", responsive: ["md"] },
+    {
+      title: "对象",
+      dataIndex: "subject_id",
+      render: (value: string | null) => value ?? "-",
+      responsive: ["md"],
+    },
     {
       title: "Correlation ID",
       dataIndex: "correlation_id",
       render: (value: string | null) => <span className="mono-text">{value ?? "-"}</span>,
+      responsive: ["md"],
     },
   ];
 

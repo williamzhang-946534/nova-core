@@ -57,12 +57,23 @@ export default function TaskListPage() {
       dataIndex: "status",
       render: (value: TaskStatus) => <StatusTag status={value} />,
     },
-    { title: "来源", dataIndex: "origin", render: (value: string) => <Tag>{value}</Tag> },
-    { title: "创建时间", dataIndex: "created_at", render: formatDateTime },
+    {
+      title: "来源",
+      dataIndex: "origin",
+      render: (value: string) => <Tag>{value}</Tag>,
+      responsive: ["md"],
+    },
+    {
+      title: "创建时间",
+      dataIndex: "created_at",
+      render: formatDateTime,
+      responsive: ["md"],
+    },
     {
       title: "Correlation ID",
       dataIndex: "correlation_id",
       render: (value: string | null) => <span className="mono-text">{value ?? "-"}</span>,
+      responsive: ["md"],
     },
     {
       title: "操作",

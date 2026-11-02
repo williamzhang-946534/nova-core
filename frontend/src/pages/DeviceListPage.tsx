@@ -46,16 +46,23 @@ export default function DeviceListPage() {
         </div>
       ),
     },
-    { title: "区域", dataIndex: "area", render: (value: string | null) => value ?? "-" },
+    {
+      title: "区域",
+      dataIndex: "area",
+      render: (value: string | null) => value ?? "-",
+      responsive: ["md"],
+    },
     {
       title: "类型",
       dataIndex: "device_type",
       render: (value: string) => <Tag>{formatDeviceType(value)}</Tag>,
+      responsive: ["md"],
     },
     {
       title: "适配器",
       dataIndex: "adapter_id",
       render: (value: string) => <Tag>{value}</Tag>,
+      responsive: ["md"],
     },
     {
       title: "状态",
@@ -68,6 +75,7 @@ export default function DeviceListPage() {
       render: (value: string) => (
         <Tag color={value === "low_risk" ? "green" : "orange"}>{value}</Tag>
       ),
+      responsive: ["md"],
     },
   ];
 
