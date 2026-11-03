@@ -20,16 +20,16 @@
 
 长期路线统一使用 `ARS`（Arvuno Roadmap Stage）：
 
-| 编号 | 阶段 | 状态 |
-|---|---|---|
-| ARS-01 | Core Execution（基础智能控制） | 已完成 |
+| 编号     | 阶段                                         | 状态                |
+| ------ | ------------------------------------------ | ----------------- |
+| ARS-01 | Core Execution（基础智能控制）                     | 已完成               |
 | ARS-02 | Spatial Environmental Intelligence（空间环境智能） | ARS-02.0 设计完成，待确认 |
-| ARS-03 | World Memory（世界记忆） | 待开发 |
-| ARS-04 | World Reasoning & Orchestration（世界推理与任务编排） | 待开发 |
-| ARS-05 | Multimodal Perception（多模态感知） | 待开发 |
-| ARS-06 | Embodied Intelligence（具身智能） | 待开发 |
-| ARS-07 | Industrial Intelligence（工业智能） | 待开发 |
-| ARS-08 | Distributed World Intelligence（分布式世界智能） | 远期规划 |
+| ARS-03 | World Memory（世界记忆）                         | 待开发               |
+| ARS-04 | World Reasoning & Orchestration（世界推理与任务编排） | 待开发               |
+| ARS-05 | Multimodal Perception（多模态感知）               | 待开发               |
+| ARS-06 | Embodied Intelligence（具身智能）                | 待开发               |
+| ARS-07 | Industrial Intelligence（工业智能）              | 待开发               |
+| ARS-08 | Distributed World Intelligence（分布式世界智能）    | 远期规划              |
 
 阶段内里程碑使用完整编号，例如 `ARS-02.0`、`ARS-02.1`。
 
@@ -457,6 +457,14 @@ Adapter / Sensor → Observation Ingestion → Schema Validation → Normalizati
 8. 实现过期和延迟观测处理。
 9. 实现异常值标记。
 10. 实现来源追踪。
+
+
+
+
+
+
+
+
 11. 明确数据写入失败后的处理方式。
 12. 限制轮询造成的无意义重复写入。
 13. 对不同传感器属性配置合理的采样和保存策略。
@@ -465,9 +473,19 @@ Adapter / Sensor → Observation Ingestion → Schema Validation → Normalizati
 
 不要将每一次设备轮询都无条件保存为长期原始记录。
 
+
+
 需要根据传感器类型、采样频率、变化幅度和保留策略制定规则。
 
 必须量化估算每分钟写入量、每日数据量、索引开销、预计数据库增长和数据清理后的存储规模。
+
+
+
+
+
+
+
+
 
 继续使用 SQLite，不引入消息队列或时序数据库。
 
@@ -559,6 +577,7 @@ Observation 不等于 Event。
 - 设备空间归属查询。
 - 状态来源查询。
 - 感知盲区查询。
+
 
 只读查询必须使用 Tool Registry 中的只读工具。
 
@@ -1289,6 +1308,7 @@ Arvuno 必须能够判断当前问题还缺少哪些信息、确定需要补充�
 
 目标：将智元机器人接入 Arvuno，使它成为移动感知、语音交互和现实任务执行终端。
 
+
 智元机器人是 Arvuno 的身体和重要入口，不是唯一的大脑。Arvuno Core 应该能够独立运行，即使机器人离线也不能影响家庭环境模型和其他设备管理。
 
 ## ARS-06.0：智元机器人接入架构设计
@@ -1310,6 +1330,7 @@ Robot Adapter 负责机器人连接、状态获取、高层能力调用、感知
 Arvuno 不允许绕过机器人本体安全系统。
 
 ### 二、设计 Robot Capability Model
+
 
 至少研究：
 
@@ -1724,16 +1745,16 @@ Mock 不能冒充真实环境。
 
 # 第十一部分：长期路线总表
 
-| 编号 | 阶段 | 主要能力 | 核心资产 |
-|---|---|---|---|
-| ARS-01 | Core Execution | 基础智能控制 | Device Adapter、Tool、Task、Safety |
-| ARS-02 | Spatial Environmental Intelligence | 空间环境感知 | Reality Ontology、Perception Engine、World Model |
-| ARS-03 | World Memory | 环境记忆 | Memory System、Temporal Model |
-| ARS-04 | World Reasoning & Orchestration | 推理、规划、主动智能 | Reasoning Engine、Planning Engine、Proactive Intelligence、Active Perception Decision |
-| ARS-05 | Multimodal Perception | 多模态感知 | Vision、Speech、Multimodal Observation |
-| ARS-06 | Embodied Intelligence | 具身智能 | Robot Adapter、Robot Capability Model、Mobile Perception |
-| ARS-07 | Industrial Intelligence | 工业智能 | Industrial Ontology、Industrial Adapter、Industrial Reasoning |
-| ARS-08 | Distributed World Intelligence | 分布式世界智能 | Node Identity、Trust、Synchronization、Delegation |
+| 编号     | 阶段                                 | 主要能力       | 核心资产                                                                               |
+| ------ | ---------------------------------- | ---------- | ---------------------------------------------------------------------------------- |
+| ARS-01 | Core Execution                     | 基础智能控制     | Device Adapter、Tool、Task、Safety                                                    |
+| ARS-02 | Spatial Environmental Intelligence | 空间环境感知     | Reality Ontology、Perception Engine、World Model                                     |
+| ARS-03 | World Memory                       | 环境记忆       | Memory System、Temporal Model                                                       |
+| ARS-04 | World Reasoning & Orchestration    | 推理、规划、主动智能 | Reasoning Engine、Planning Engine、Proactive Intelligence、Active Perception Decision |
+| ARS-05 | Multimodal Perception              | 多模态感知      | Vision、Speech、Multimodal Observation                                               |
+| ARS-06 | Embodied Intelligence              | 具身智能       | Robot Adapter、Robot Capability Model、Mobile Perception                             |
+| ARS-07 | Industrial Intelligence            | 工业智能       | Industrial Ontology、Industrial Adapter、Industrial Reasoning                        |
+| ARS-08 | Distributed World Intelligence     | 分布式世界智能    | Node Identity、Trust、Synchronization、Delegation                                     |
 
 跨阶段能力：
 
