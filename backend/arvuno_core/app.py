@@ -25,7 +25,11 @@ from arvuno_core.api.devices import router as devices_router
 from arvuno_core.api.environment import router as environment_router
 from arvuno_core.api.events import router as events_router
 from arvuno_core.api.health import router as health_router
+from arvuno_core.api.observations import router as observations_router
+from arvuno_core.api.observations import source_router as observation_sources_router
 from arvuno_core.api.settings import router as settings_router
+from arvuno_core.api.spaces import device_router as space_device_router
+from arvuno_core.api.spaces import router as spaces_router
 from arvuno_core.api.system import router as system_router
 from arvuno_core.api.tasks import router as tasks_router
 from arvuno_core.api.tools import router as tools_router
@@ -49,10 +53,12 @@ from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
 from arvuno_core.events.service import DeviceEventService
 from arvuno_core.logging_config import correlation_id_var
+from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.provider_logs import SqlProviderLogStore
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.spatial.service import SpatialService
 from arvuno_core.tasks.service import TaskService
 from arvuno_core.tools.catalog import RegistryToolCatalog
 from arvuno_core.tools.confirmation import ConfirmationService
@@ -181,6 +187,13 @@ def create_app(
         },
     )
     app.state.environment_context = environment_context
+    spatial_service = SpatialService(
+        unit_of_work_factory,
+        environment_name=app_settings.default_environment_name,
+    )
+    app.state.spatial_service = spatial_service
+    observation_service = ObservationService(unit_of_work_factory)
+    app.state.observation_service = observation_service
     app.state.initialize_event_runtime = initialize_event_runtime
     home_assistant_adapter: HomeAssistantAdapter | None = None
     if (
@@ -300,6 +313,10 @@ def create_app(
     app.include_router(health_router)
     app.include_router(system_router)
     app.include_router(devices_router)
+    app.include_router(spaces_router)
+    app.include_router(space_device_router)
+    app.include_router(observations_router)
+    app.include_router(observation_sources_router)
     app.include_router(environment_router)
     app.include_router(events_router)
     app.include_router(tools_router)

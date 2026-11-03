@@ -445,3 +445,19 @@ Phase 10 稳定化验收已于 2026-10-30 执行，并于 2026-11-02 补充真�
 Arvuno Core 已完成工程初始化、数据配置、设备接入、环境状态、事件系统、安全工具执行、任务系统基础、AI Agent、Web 控制台和自动化通知最小闭环。Phase 10 稳定化验收已完成，此前发现的问题已修复并复验，第一阶段 demo 验收已收尾。后续阶段必须等待用户另行确认；继续开发时保持小模块和明确安全边界。
 
 Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务失败提醒。真实 Home Assistant 写操作验收后已恢复默认关闭，真实模型只在显式配置后启用。Phase 10 的 F1 已修复并复验，真实 DeepSeek 冒烟通过，真实 Home Assistant demo 读/写链路和断线/重连通过；浏览器逐页与移动端终验也已通过，第一阶段已收尾。
+
+## ARS 长期路线状态
+
+本节与上方仓库历史 `Phase 0-10` 编号相互独立。长期路线使用 `ARS` 编号；历史验收报告不改名。
+
+| 长期阶段 | 状态 | 说明 |
+| --- | --- | --- |
+| `ARS-01` Core Execution | 已完成 | 对应仓库 Phase 10 完成状态 |
+| `ARS-02` Spatial Environmental Intelligence | ARS-02.1 与 ARS-02.2 实现完成，待用户验收 | 设计见第 20 至 24 号文档；Spatial Model 与 Observation Model 已实现 |
+| `ARS-03` World Memory | 待开发 | 依赖 ARS-02 验收 |
+
+ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation Pipeline、State Estimation、Environment Context v2、迁移与 API 草案、隐私删除、SQLite 性能、测试策略和验收标准。用户确认设计后，先执行 `ARS-02.1 Spatial Model 工程实现`，不得直接跳到观测管线或状态估计。
+
+2026-11-03，`ARS-02.1 Spatial Model 工程实现` 已完成并通过后端全量回归与前端构建，当前状态为待用户验收。本子阶段只包含空间层级、设备实体与归属历史、Alembic 增量迁移、空间 API 和基础空间管理页面；Observation Pipeline、State Estimation、Memory、Planner、Active Agent、GIS/3D、机器人和工业功能均未实现。
+
+2026-11-03，`ARS-02.2 Entity 与 Observation 数据模型` 已完成并通过后端全量回归，当前状态为待用户验收。本子阶段包含 Observation schema、来源/属性/策略/授权同意表、Repository、设备-实体-来源映射、外部设备 ID 解析、单位标准化、采集/接收/处理时间区分、质量与有效期标记、幂等 append、基础查询 API 和 Alembic 增量迁移；不回填或双写 `device_states`。Observation Pipeline runtime ownership、HA/Mock 轮询自动入库、State Estimation、Environment Context v2、Memory、Planner 和 Active Agent 均未实现。

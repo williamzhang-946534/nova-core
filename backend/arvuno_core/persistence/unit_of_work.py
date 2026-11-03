@@ -9,6 +9,12 @@ from arvuno_core.persistence.automations import (
     NotificationRepository,
 )
 from arvuno_core.persistence.exceptions import RepositoryError
+from arvuno_core.persistence.observations import (
+    ObservationAttributeRepository,
+    ObservationConsentRepository,
+    ObservationRepository,
+    ObservationSourceRepository,
+)
 from arvuno_core.persistence.provider_logs import ProviderLogRepository
 from arvuno_core.persistence.repositories import (
     DeviceRepository,
@@ -17,6 +23,11 @@ from arvuno_core.persistence.repositories import (
     SystemSettingRepository,
     ToolExecutionRepository,
     ToolRepository,
+)
+from arvuno_core.persistence.spatial import (
+    EntityRepository,
+    EntitySpaceAssignmentRepository,
+    SpaceRepository,
 )
 from arvuno_core.persistence.tasks import TaskRepository
 
@@ -30,6 +41,13 @@ class SqlAlchemyUnitOfWork:
         self.devices: DeviceRepository | None = None
         self.events: EventRepository | None = None
         self.environments: EnvironmentRepository | None = None
+        self.spaces: SpaceRepository | None = None
+        self.entities: EntityRepository | None = None
+        self.space_assignments: EntitySpaceAssignmentRepository | None = None
+        self.observation_sources: ObservationSourceRepository | None = None
+        self.observation_attributes: ObservationAttributeRepository | None = None
+        self.observation_consents: ObservationConsentRepository | None = None
+        self.observations: ObservationRepository | None = None
         self.system_settings: SystemSettingRepository | None = None
         self.tools: ToolRepository | None = None
         self.tool_executions: ToolExecutionRepository | None = None
@@ -44,6 +62,13 @@ class SqlAlchemyUnitOfWork:
         self.devices = DeviceRepository(self._session)
         self.events = EventRepository(self._session)
         self.environments = EnvironmentRepository(self._session)
+        self.spaces = SpaceRepository(self._session)
+        self.entities = EntityRepository(self._session)
+        self.space_assignments = EntitySpaceAssignmentRepository(self._session)
+        self.observation_sources = ObservationSourceRepository(self._session)
+        self.observation_attributes = ObservationAttributeRepository(self._session)
+        self.observation_consents = ObservationConsentRepository(self._session)
+        self.observations = ObservationRepository(self._session)
         self.system_settings = SystemSettingRepository(self._session)
         self.tools = ToolRepository(self._session)
         self.tool_executions = ToolExecutionRepository(self._session)
@@ -84,6 +109,13 @@ class SqlAlchemyUnitOfWork:
             self.devices = None
             self.events = None
             self.environments = None
+            self.spaces = None
+            self.entities = None
+            self.space_assignments = None
+            self.observation_sources = None
+            self.observation_attributes = None
+            self.observation_consents = None
+            self.observations = None
             self.system_settings = None
             self.tools = None
             self.tool_executions = None

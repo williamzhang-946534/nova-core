@@ -51,7 +51,10 @@ class DeviceRegistry:
         def execute() -> DeviceSyncResult:
             with self._unit_of_work_factory() as uow:
                 assert uow.devices is not None
+                assert uow.entities is not None
+                assert uow.environments is not None
                 repository = uow.devices
+                environment = uow.environments.ensure_default()
                 arvuno_id_by_external_id: dict[str, str] = {}
                 for device in devices:
                     projection = repository.upsert_projection(
@@ -61,6 +64,7 @@ class DeviceRegistry:
                             state_by_external_id.get(device.external_id),
                         )
                     )
+                    uow.entities.ensure_device_entity(projection, environment)
                     repository.replace_capabilities(
                         projection.id,
                         [

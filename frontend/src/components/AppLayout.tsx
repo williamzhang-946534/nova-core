@@ -5,6 +5,7 @@ import {
   BellOutlined,
   DashboardOutlined,
   CommentOutlined,
+  HomeOutlined,
   UnorderedListOutlined,
   SettingOutlined,
   ThunderboltOutlined,
@@ -32,6 +33,11 @@ export default function AppLayout() {
               key: "/devices",
               icon: <ApiOutlined />,
               label: <Link to="/devices">设备</Link>,
+            },
+            {
+              key: "/spaces",
+              icon: <HomeOutlined />,
+              label: <Link to="/spaces">空间</Link>,
             },
             {
               key: "/environment",

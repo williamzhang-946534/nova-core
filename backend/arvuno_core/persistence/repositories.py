@@ -11,6 +11,7 @@ from arvuno_core.persistence.models import (
     Device,
     DeviceCapability,
     DeviceState,
+    EntitySpaceAssignment,
     Environment,
     EnvironmentSnapshot,
     Event,
@@ -176,7 +177,18 @@ class DeviceRepository(BaseRepository[Device]):
                 projection.name = update.name
                 projection.normalized_name = update.name.casefold()
                 projection.device_type = update.device_type
-                projection.area = update.area
+                # Once ARS-02 has a current placement, that history-backed value is
+                # authoritative and adapter area strings cannot overwrite it.
+                has_current_placement = projection.entity_id is not None and (
+                    self._session.scalars(
+                        select(EntitySpaceAssignment).where(
+                            EntitySpaceAssignment.entity_id == projection.entity_id,
+                            EntitySpaceAssignment.valid_until.is_(None),
+                        )
+                    ).first()
+                    is not None
+                )
+                projection.area = update.area if not has_current_placement else projection.area
                 projection.manufacturer = update.manufacturer
                 projection.model = update.model
                 projection.is_online = update.is_online

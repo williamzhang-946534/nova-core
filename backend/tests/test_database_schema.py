@@ -16,12 +16,21 @@ EXPECTED_TABLES = {
     "device_capabilities",
     "device_states",
     "devices",
+    "entities",
+    "entity_space_assignments",
     "environment_snapshots",
     "environments",
     "events",
     "memories",
     "notifications",
+    "observation_attribute_definitions",
+    "observation_attribute_policies",
+    "observation_consents",
+    "observation_sources",
+    "observations",
     "provider_logs",
+    "space_paths",
+    "spaces",
     "system_settings",
     "task_steps",
     "tasks",
@@ -95,6 +104,7 @@ EXPECTED_COLUMNS = {
         "normalized_name",
         "device_type",
         "area",
+        "entity_id",
         "manufacturer",
         "model",
         "is_online",
@@ -106,6 +116,36 @@ EXPECTED_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "entities": {
+        "id",
+        "environment_id",
+        "entity_type",
+        "name",
+        "normalized_name",
+        "description",
+        "status",
+        "semantic_tags",
+        "capabilities_ref",
+        "metadata",
+        "created_at",
+        "updated_at",
+        "retired_at",
+    },
+    "entity_space_assignments": {
+        "id",
+        "entity_id",
+        "space_id",
+        "assignment_type",
+        "valid_from",
+        "valid_until",
+        "confidence",
+        "source_type",
+        "source_id",
+        "source_observation_id",
+        "reason",
+        "created_at",
+        "updated_at",
+    },
     "environment_snapshots": {
         "id",
         "environment_id",
@@ -114,7 +154,14 @@ EXPECTED_COLUMNS = {
         "anomaly_count",
         "created_at",
     },
-    "environments": {"id", "name", "description", "is_default", "created_at"},
+    "environments": {
+        "id",
+        "name",
+        "description",
+        "is_default",
+        "root_space_id",
+        "created_at",
+    },
     "events": {
         "id",
         "event_type",
@@ -153,6 +200,98 @@ EXPECTED_COLUMNS = {
         "created_at",
         "sent_at",
     },
+    "observation_attribute_definitions": {
+        "attribute",
+        "display_name",
+        "value_type",
+        "canonical_unit",
+        "normalization_rule_version",
+        "valid_range",
+        "quality_policy",
+        "freshness_policy",
+        "sampling_policy",
+        "retention_policy",
+        "sensitivity",
+        "created_at",
+        "updated_at",
+    },
+    "observation_attribute_policies": {
+        "id",
+        "attribute",
+        "sensitivity",
+        "requires_consent",
+        "allowed_source_types",
+        "allowed_spaces",
+        "raw_storage_allowed",
+        "record_retention_days",
+        "normalized_only",
+        "redaction_rule",
+        "version",
+        "created_at",
+        "updated_at",
+    },
+    "observation_consents": {
+        "id",
+        "subject_type",
+        "subject_id",
+        "attribute",
+        "policy_id",
+        "status",
+        "granted_at",
+        "revoked_at",
+        "expires_at",
+        "scope",
+        "evidence",
+        "created_at",
+        "updated_at",
+    },
+    "observation_sources": {
+        "id",
+        "source_type",
+        "adapter_id",
+        "name",
+        "status",
+        "trust_level",
+        "time_trust",
+        "config",
+        "privacy_scope",
+        "created_at",
+        "updated_at",
+    },
+    "observations": {
+        "observation_id",
+        "source_id",
+        "source_type",
+        "entity_id",
+        "subject_type",
+        "subject_id",
+        "space_id",
+        "attribute",
+        "raw_value",
+        "raw_unit",
+        "normalized_value",
+        "normalized_unit",
+        "value_type",
+        "observed_at",
+        "observed_at_source",
+        "observed_at_uncertainty_ms",
+        "received_at",
+        "processed_at",
+        "quality_status",
+        "quality_issues",
+        "valid_from",
+        "valid_until",
+        "freshness_policy",
+        "freshness_evaluated_at",
+        "correlation_id",
+        "external_id",
+        "dedupe_key",
+        "payload_hash",
+        "normalization_rule_version",
+        "retention_class",
+        "retention_until",
+        "created_at",
+    },
     "provider_logs": {
         "id",
         "provider",
@@ -166,6 +305,31 @@ EXPECTED_COLUMNS = {
         "prompt_tokens",
         "completion_tokens",
         "created_at",
+    },
+    "space_paths": {
+        "ancestor_id",
+        "descendant_id",
+        "depth",
+        "path_version",
+        "created_at",
+    },
+    "spaces": {
+        "id",
+        "parent_id",
+        "space_type",
+        "name",
+        "normalized_name",
+        "slug",
+        "path",
+        "sort_order",
+        "external_space_id",
+        "external_source",
+        "status",
+        "geometry",
+        "metadata",
+        "created_at",
+        "updated_at",
+        "archived_at",
     },
     "system_settings": {
         "id",
@@ -304,12 +468,16 @@ def test_migration_creates_documented_constraints_and_indexes(tmp_path: Path) ->
                 for constraint in inspector.get_unique_constraints(table)
             }
 
-        assert unique_tuples("devices") == {("adapter_id", "external_id")}
+        assert unique_tuples("devices") == {("adapter_id", "external_id"), ("entity_id",)}
         assert unique_tuples("device_capabilities") == {("device_id", "capability")}
+        assert unique_tuples("environments") == {("root_space_id",)}
         assert unique_tuples("task_steps") == {("task_id", "step_index")}
         assert unique_tuples("tools") == {("name",)}
         assert unique_tuples("user_preferences") == {("key",)}
         assert unique_tuples("system_settings") == {("key",)}
+        assert unique_tuples("spaces") == {("parent_id", "slug")}
+        assert unique_tuples("observation_attribute_policies") == {("attribute", "version")}
+        assert unique_tuples("observations") == {("dedupe_key",)}
 
         event_indexes = {
             index["name"]: tuple(index["column_names"]) for index in inspector.get_indexes("events")
@@ -325,6 +493,51 @@ def test_migration_creates_documented_constraints_and_indexes(tmp_path: Path) ->
             for key in inspector.get_foreign_keys("device_states")
         }
         assert foreign_keys == {("devices", "device_id")}
+
+        assignment_keys = {
+            (key["referred_table"], tuple(key["constrained_columns"]))
+            for key in inspector.get_foreign_keys("entity_space_assignments")
+        }
+        assert assignment_keys == {
+            ("entities", ("entity_id",)),
+            ("spaces", ("space_id",)),
+        }
+
+        observation_indexes = {
+            index["name"]: tuple(index["column_names"])
+            for index in inspector.get_indexes("observations")
+        }
+        assert observation_indexes == {
+            "ix_observations_source_attribute_received": (
+                "source_id",
+                "attribute",
+                "received_at",
+            ),
+            "ix_observations_entity_attribute_received": (
+                "entity_id",
+                "attribute",
+                "received_at",
+            ),
+            "ix_observations_space_attribute_received": (
+                "space_id",
+                "attribute",
+                "received_at",
+            ),
+            "ix_observations_retention_until": ("retention_until",),
+            "ix_observations_correlation": ("correlation_id",),
+            "ix_observations_external": ("source_id", "external_id"),
+        }
+
+        observation_keys = {
+            (key["referred_table"], tuple(key["constrained_columns"]))
+            for key in inspector.get_foreign_keys("observations")
+        }
+        assert observation_keys == {
+            ("entities", ("entity_id",)),
+            ("spaces", ("space_id",)),
+            ("observation_attribute_definitions", ("attribute",)),
+            ("observation_sources", ("source_id",)),
+        }
     finally:
         manager.dispose()
 
