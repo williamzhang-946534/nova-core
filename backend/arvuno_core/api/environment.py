@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from arvuno_core.api.security import require_api_token
 from arvuno_core.environment.context import EnvironmentContextService, area_summary
+from arvuno_core.environment.context_v2 import EnvironmentContextV2Service
 from arvuno_core.events.service import EventQueryService
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from arvuno_core.schemas.console import (
@@ -15,6 +16,10 @@ from arvuno_core.schemas.console import (
     EnvironmentSummary,
 )
 from arvuno_core.schemas.events import EventItem
+from arvuno_core.schemas.state_estimates import (
+    EnvironmentContextV2DataWrapper,
+    EnvironmentContextV2RebuildDataWrapper,
+)
 
 
 def get_unit_of_work_factory(request: Request) -> Callable[[], SqlAlchemyUnitOfWork]:
@@ -35,6 +40,13 @@ def get_environment_service(request: Request) -> EnvironmentContextService:
     service = getattr(request.app.state, "environment_context", None)
     if not isinstance(service, EnvironmentContextService):
         raise RuntimeError("The environment service is unavailable.")
+    return service
+
+
+def get_environment_v2_service(request: Request) -> EnvironmentContextV2Service:
+    service = getattr(request.app.state, "environment_context_v2", None)
+    if not isinstance(service, EnvironmentContextV2Service):
+        raise RuntimeError("The environment context v2 service is unavailable.")
     return service
 
 
@@ -89,6 +101,23 @@ async def get_environment(
     )
 
 
+@router.get("/context-v2", response_model=EnvironmentContextV2DataWrapper)
+async def get_environment_context_v2(
+    service: Annotated[EnvironmentContextV2Service, Depends(get_environment_v2_service)],
+) -> EnvironmentContextV2DataWrapper:
+    return EnvironmentContextV2DataWrapper(data=await service.build())
+
+
+@router.post("/context-v2/rebuild", response_model=EnvironmentContextV2RebuildDataWrapper)
+async def rebuild_environment_context_v2(
+    service: Annotated[EnvironmentContextV2Service, Depends(get_environment_v2_service)],
+) -> EnvironmentContextV2RebuildDataWrapper:
+    context, anomaly_count = await service.rebuild_snapshot()
+    return EnvironmentContextV2RebuildDataWrapper(
+        data={"context": context, "anomaly_count": anomaly_count}
+    )
+
+
 @router.get("/snapshots", response_model=EnvironmentSnapshotListData)
 async def list_environment_snapshots(
     request: Request,
@@ -121,6 +150,8 @@ async def list_environment_snapshots(
                     context=record.context,
                     active_task_ids=record.active_task_ids,
                     anomaly_count=record.anomaly_count,
+                    context_version=record.context_version,
+                    state_generated_at=record.state_generated_at,
                     created_at=record.created_at,
                 )
                 for record in records

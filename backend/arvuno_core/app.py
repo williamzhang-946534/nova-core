@@ -2,6 +2,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -30,6 +31,7 @@ from arvuno_core.api.observations import source_router as observation_sources_ro
 from arvuno_core.api.settings import router as settings_router
 from arvuno_core.api.spaces import device_router as space_device_router
 from arvuno_core.api.spaces import router as spaces_router
+from arvuno_core.api.state_estimates import router as state_estimates_router
 from arvuno_core.api.system import router as system_router
 from arvuno_core.api.tasks import router as tasks_router
 from arvuno_core.api.tools import router as tools_router
@@ -47,8 +49,10 @@ from arvuno_core.devices.polling_runtime import DevicePollingRuntime
 from arvuno_core.devices.registry import DeviceRegistry
 from arvuno_core.devices.service import DeviceApplicationService
 from arvuno_core.environment.context import EnvironmentContextService, area_summary
+from arvuno_core.environment.context_v2 import EnvironmentContextV2Service
 from arvuno_core.environment.reconciliation import EnvironmentReconciler
 from arvuno_core.errors import ArvunoError, ErrorResponse
+from arvuno_core.estimation.service import StateEstimationService
 from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
 from arvuno_core.events.service import DeviceEventService
@@ -113,6 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "initialize_tool_runtime", False):
         device_registry = app.state.device_registry
         mock_adapter = app.state.mock_device_adapter
+        await app.state.spatial_service.ensure_root()
         mock_sync = await device_registry.sync_devices(mock_adapter)
         try:
             await app.state.observation_pipeline.ingest_states(
@@ -131,6 +136,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 )
             except Exception:
                 logger.exception("home_assistant_projection_sync_failed")
+        try:
+            await app.state.state_estimation_service.rebuild()
+        except Exception:
+            logger.exception("startup_state_estimation_rebuild_failed")
         if getattr(app.state, "start_device_polling", False):
             runtime = await _start_device_polling(app, device_registry)
             app.state.device_polling_runtime = runtime
@@ -207,7 +216,26 @@ def create_app(
     app.state.spatial_service = spatial_service
     observation_service = ObservationService(unit_of_work_factory)
     app.state.observation_service = observation_service
-    observation_pipeline = ObservationPipeline(unit_of_work_factory, observation_service)
+    state_estimation_service = StateEstimationService(
+        unit_of_work_factory,
+        environment_name=app_settings.default_environment_name,
+    )
+    app.state.state_estimation_service = state_estimation_service
+    app.state.environment_context_v2 = EnvironmentContextV2Service(
+        unit_of_work_factory,
+        state_estimation_service,
+    )
+
+    async def rebuild_after_observations(received_at: object) -> None:
+        await state_estimation_service.rebuild(
+            received_at if isinstance(received_at, datetime) else None
+        )
+
+    observation_pipeline = ObservationPipeline(
+        unit_of_work_factory,
+        observation_service,
+        estimation_callback=rebuild_after_observations,
+    )
     app.state.observation_pipeline = observation_pipeline
     app.state.initialize_event_runtime = initialize_event_runtime
     home_assistant_adapter: HomeAssistantAdapter | None = None
@@ -333,6 +361,7 @@ def create_app(
     app.include_router(space_device_router)
     app.include_router(observations_router)
     app.include_router(observation_sources_router)
+    app.include_router(state_estimates_router)
     app.include_router(environment_router)
     app.include_router(events_router)
     app.include_router(tools_router)

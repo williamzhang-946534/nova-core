@@ -121,7 +121,10 @@ class EnvironmentContextService:
                 if unit_of_work.environments is None:
                     raise RuntimeError("The environment repository is not available.")
                 environment = unit_of_work.environments.ensure_default(self._environment_name)
-                snapshot = unit_of_work.environments.latest_snapshot(environment.id)
+                snapshot = unit_of_work.environments.latest_snapshot(
+                    environment.id,
+                    context_version=1,
+                )
                 unit_of_work.commit()
                 if snapshot is None:
                     return environment.id, {}, None

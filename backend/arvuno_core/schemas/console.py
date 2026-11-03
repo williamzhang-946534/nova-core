@@ -60,6 +60,8 @@ class EnvironmentSnapshotItem(BaseModel):
     context: dict[str, Any]
     active_task_ids: list[str]
     anomaly_count: int
+    context_version: int
+    state_generated_at: datetime | None = None
     created_at: datetime
 
 

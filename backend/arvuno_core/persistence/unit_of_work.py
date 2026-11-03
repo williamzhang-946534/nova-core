@@ -31,6 +31,7 @@ from arvuno_core.persistence.spatial import (
     EntitySpaceAssignmentRepository,
     SpaceRepository,
 )
+from arvuno_core.persistence.state_estimates import StateEstimateRepository
 from arvuno_core.persistence.tasks import TaskRepository
 
 
@@ -60,6 +61,7 @@ class SqlAlchemyUnitOfWork:
         self.automations: AutomationRepository | None = None
         self.automation_runs: AutomationRunRepository | None = None
         self.notifications: NotificationRepository | None = None
+        self.state_estimates: StateEstimateRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -83,6 +85,7 @@ class SqlAlchemyUnitOfWork:
         self.automations = AutomationRepository(self._session)
         self.automation_runs = AutomationRunRepository(self._session)
         self.notifications = NotificationRepository(self._session)
+        self.state_estimates = StateEstimateRepository(self._session)
         return self
 
     def __exit__(
@@ -132,3 +135,4 @@ class SqlAlchemyUnitOfWork:
             self.automations = None
             self.automation_runs = None
             self.notifications = None
+            self.state_estimates = None

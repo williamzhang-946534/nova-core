@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 
 from arvuno_core.api.security import require_api_token
+from arvuno_core.environment.context_v2 import EnvironmentContextV2Service
 from arvuno_core.schemas.spaces import (
     DeviceAssignmentData,
     DeviceAssignmentHistoryData,
@@ -15,6 +16,7 @@ from arvuno_core.schemas.spaces import (
     SpaceTreeData,
     SpaceUpdateRequest,
 )
+from arvuno_core.schemas.state_estimates import SpaceStateDataWrapper
 from arvuno_core.spatial.service import SpatialService
 
 router = APIRouter(
@@ -33,6 +35,13 @@ def get_spatial_service(request: Request) -> SpatialService:
     service = getattr(request.app.state, "spatial_service", None)
     if not isinstance(service, SpatialService):
         raise RuntimeError("The spatial service is unavailable.")
+    return service
+
+
+def get_environment_context_v2_service(request: Request) -> EnvironmentContextV2Service:
+    service = getattr(request.app.state, "environment_context_v2", None)
+    if not isinstance(service, EnvironmentContextV2Service):
+        raise RuntimeError("The environment context v2 service is unavailable.")
     return service
 
 
@@ -69,6 +78,14 @@ async def create_space(
         metadata=request.metadata,
     )
     return SpaceDetailData(data=space)
+
+
+@router.get("/{space_id}/state", response_model=SpaceStateDataWrapper)
+async def get_space_state(
+    space_id: str,
+    service: Annotated[EnvironmentContextV2Service, Depends(get_environment_context_v2_service)],
+) -> SpaceStateDataWrapper:
+    return SpaceStateDataWrapper(data=await service.space_state(space_id))
 
 
 @router.get("/{space_id}", response_model=SpaceDetailData)

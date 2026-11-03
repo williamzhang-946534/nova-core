@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -31,9 +31,11 @@ class ObservationPipeline:
         self,
         unit_of_work_factory: Callable[[], SqlAlchemyUnitOfWork],
         observation_service: ObservationService | None = None,
+        estimation_callback: Callable[[datetime], Awaitable[None]] | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._observation_service = observation_service or ObservationService(unit_of_work_factory)
+        self._estimation_callback = estimation_callback
 
     async def ingest(self, batch: AdapterObservationBatch) -> ObservationBatchResult:
         received_at = self._utc(batch.received_at)
@@ -80,7 +82,7 @@ class ObservationPipeline:
                     item.status = "accepted"
                     accepted += 1
 
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._finish_batch,
                 normalized_batch,
                 items,
@@ -89,6 +91,15 @@ class ObservationPipeline:
                 sampled=sampled,
                 invalid=invalid,
             )
+            if accepted > 0 and self._estimation_callback is not None:
+                try:
+                    await self._estimation_callback(normalized_batch.received_at)
+                except Exception:
+                    logger.exception(
+                        "state_estimation_after_ingestion_failed",
+                        extra={"batch_id": batch.batch_id},
+                    )
+            return result
         except Exception as exc:
             logger.exception("observation_pipeline_failed", extra={"batch_id": batch.batch_id})
             return await asyncio.to_thread(

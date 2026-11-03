@@ -160,6 +160,8 @@ class EnvironmentSnapshot(Base):
     context: Mapped[dict[str, Any]] = mapped_column(JSON)
     active_task_ids: Mapped[list[str]] = mapped_column(JSON)
     anomaly_count: Mapped[int]
+    context_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
+    state_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     __table_args__ = (
@@ -167,6 +169,162 @@ class EnvironmentSnapshot(Base):
     )
 
     environment: Mapped[Environment] = relationship(back_populates="snapshots")
+
+
+class EstimationTarget(Base):
+    __tablename__ = "estimation_targets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    target_type: Mapped[str] = mapped_column(String(20))
+    entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id", ondelete="CASCADE"))
+    attribute: Mapped[str] = mapped_column(
+        ForeignKey("observation_attribute_definitions.attribute", ondelete="RESTRICT")
+    )
+    strategy_id: Mapped[str] = mapped_column(String(100))
+    strategy_version: Mapped[str] = mapped_column(String(50))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    validity_policy: Mapped[dict[str, Any]] = mapped_column(JSON)
+    conflict_policy: Mapped[dict[str, Any]] = mapped_column(JSON)
+    coverage_policy: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(target_type = 'entity' AND entity_id IS NOT NULL AND space_id IS NULL) "
+            "OR (target_type = 'space' AND entity_id IS NULL AND space_id IS NOT NULL) "
+            "OR (target_type = 'environment' AND entity_id IS NULL AND space_id IS NULL)",
+            name="ck_estimation_targets_scope",
+        ),
+        Index(
+            "uq_estimation_targets_entity",
+            "environment_id",
+            "entity_id",
+            "attribute",
+            unique=True,
+            sqlite_where=text("target_type = 'entity' AND entity_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_estimation_targets_space",
+            "environment_id",
+            "space_id",
+            "attribute",
+            unique=True,
+            sqlite_where=text("target_type = 'space' AND space_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_estimation_targets_environment",
+            "environment_id",
+            "attribute",
+            unique=True,
+            sqlite_where=text("target_type = 'environment'"),
+        ),
+        Index("ix_estimation_targets_environment_type", "environment_id", "target_type"),
+        Index("ix_estimation_targets_attribute", "attribute"),
+    )
+
+
+class StateEstimate(Base):
+    __tablename__ = "state_estimates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    target_id: Mapped[str] = mapped_column(ForeignKey("estimation_targets.id", ondelete="CASCADE"))
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(20))
+    value: Mapped[Any | None] = mapped_column(JSON)
+    unit: Mapped[str | None] = mapped_column(String(50))
+    confidence: Mapped[float | None] = mapped_column(Float)
+    evidence_summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    conflict_details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    rule_id: Mapped[str] = mapped_column(String(100))
+    rule_version: Mapped[str] = mapped_column(String(50))
+    input_cutoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('observed', 'derived', 'inferred', 'unknown', 'stale', "
+            "'unavailable', 'conflict')",
+            name="ck_state_estimates_status",
+        ),
+        Index("ix_state_estimates_target_generated", "target_id", "generated_at"),
+        Index(
+            "ix_state_estimates_environment_status_generated",
+            "environment_id",
+            "status",
+            "generated_at",
+        ),
+    )
+
+    target: Mapped[EstimationTarget] = relationship()
+    evidence: Mapped[list["StateEstimateObservation"]] = relationship(
+        back_populates="estimate", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class StateEstimateObservation(Base):
+    __tablename__ = "state_estimate_observations"
+
+    estimate_id: Mapped[str] = mapped_column(
+        ForeignKey("state_estimates.id", ondelete="CASCADE"), primary_key=True
+    )
+    observation_id: Mapped[str] = mapped_column(
+        ForeignKey("observations.observation_id", ondelete="CASCADE"), primary_key=True
+    )
+    contribution: Mapped[str] = mapped_column(String(30))
+    weight: Mapped[float | None] = mapped_column(Float)
+    exclusion_reason: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "contribution IN ('direct', 'candidate', 'context', 'negative_evidence')",
+            name="ck_state_estimate_observations_contribution",
+        ),
+        Index("ix_state_estimate_observations_observation", "observation_id"),
+    )
+
+    estimate: Mapped[StateEstimate] = relationship(back_populates="evidence")
+
+
+class CurrentStateEstimate(Base):
+    __tablename__ = "current_state_estimates"
+
+    target_id: Mapped[str] = mapped_column(
+        ForeignKey("estimation_targets.id", ondelete="CASCADE"), primary_key=True
+    )
+    latest_estimate_id: Mapped[str] = mapped_column(
+        ForeignKey("state_estimates.id", ondelete="CASCADE")
+    )
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(20))
+    value: Mapped[Any | None] = mapped_column(JSON)
+    unit: Mapped[str | None] = mapped_column(String(50))
+    confidence: Mapped[float | None] = mapped_column(Float)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    projection_version: Mapped[str] = mapped_column(Integer, default=1)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('observed', 'derived', 'inferred', 'unknown', 'stale', "
+            "'unavailable', 'conflict')",
+            name="ck_current_state_estimates_status",
+        ),
+        Index("ix_current_state_estimates_environment_status", "environment_id", "status"),
+        Index("ix_current_state_estimates_valid_until", "valid_until"),
+    )
+
+    target: Mapped[EstimationTarget] = relationship()
+    latest_estimate: Mapped[StateEstimate] = relationship()
 
 
 class Space(Base):

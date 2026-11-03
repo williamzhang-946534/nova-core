@@ -480,6 +480,8 @@ class EnvironmentRepository(BaseRepository[Environment]):
         context: dict[str, Any],
         active_task_ids: list[str],
         anomaly_count: int,
+        context_version: int = 1,
+        state_generated_at: datetime | None = None,
     ) -> EnvironmentSnapshot:
         try:
             snapshot = EnvironmentSnapshot(
@@ -487,13 +489,20 @@ class EnvironmentRepository(BaseRepository[Environment]):
                 context=context,
                 active_task_ids=active_task_ids,
                 anomaly_count=anomaly_count,
+                context_version=context_version,
+                state_generated_at=state_generated_at,
             )
             self._session.add(snapshot)
             return snapshot
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to save an environment snapshot.") from exc
 
-    def latest_snapshot(self, environment_id: str) -> EnvironmentSnapshot | None:
+    def latest_snapshot(
+        self,
+        environment_id: str,
+        *,
+        context_version: int | None = None,
+    ) -> EnvironmentSnapshot | None:
         try:
             statement = (
                 select(EnvironmentSnapshot)
@@ -501,6 +510,8 @@ class EnvironmentRepository(BaseRepository[Environment]):
                 .order_by(EnvironmentSnapshot.created_at.desc(), EnvironmentSnapshot.id.desc())
                 .limit(1)
             )
+            if context_version is not None:
+                statement = statement.where(EnvironmentSnapshot.context_version == context_version)
             return self._session.scalars(statement).first()
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read the latest environment snapshot.") from exc
