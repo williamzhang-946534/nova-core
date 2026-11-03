@@ -53,6 +53,7 @@ from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
 from arvuno_core.events.service import DeviceEventService
 from arvuno_core.logging_config import correlation_id_var
+from arvuno_core.observations.pipeline import ObservationPipeline
 from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.provider_logs import SqlProviderLogStore
@@ -87,6 +88,7 @@ async def _start_device_polling(
         EnvironmentReconciler(
             device_registry,
             DeviceEventService(device_registry, app.state.event_bus),
+            app.state.observation_pipeline,
         ),
         adapters,
         external_ids,
@@ -111,11 +113,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "initialize_tool_runtime", False):
         device_registry = app.state.device_registry
         mock_adapter = app.state.mock_device_adapter
-        await device_registry.sync_devices(mock_adapter)
+        mock_sync = await device_registry.sync_devices(mock_adapter)
+        try:
+            await app.state.observation_pipeline.ingest_states(
+                adapter_id=mock_adapter.adapter_id,
+                states=list(mock_sync.states),
+            )
+        except Exception:
+            logger.exception("mock_observation_ingestion_failed")
         home_assistant_adapter = getattr(app.state, "home_assistant_adapter", None)
         if home_assistant_adapter is not None:
             try:
-                await device_registry.sync_devices(home_assistant_adapter)
+                home_assistant_sync = await device_registry.sync_devices(home_assistant_adapter)
+                await app.state.observation_pipeline.ingest_states(
+                    adapter_id=home_assistant_adapter.adapter_id,
+                    states=list(home_assistant_sync.states),
+                )
             except Exception:
                 logger.exception("home_assistant_projection_sync_failed")
         if getattr(app.state, "start_device_polling", False):
@@ -194,6 +207,8 @@ def create_app(
     app.state.spatial_service = spatial_service
     observation_service = ObservationService(unit_of_work_factory)
     app.state.observation_service = observation_service
+    observation_pipeline = ObservationPipeline(unit_of_work_factory, observation_service)
+    app.state.observation_pipeline = observation_pipeline
     app.state.initialize_event_runtime = initialize_event_runtime
     home_assistant_adapter: HomeAssistantAdapter | None = None
     if (
@@ -209,6 +224,7 @@ def create_app(
             for adapter in (mock_adapter, home_assistant_adapter)
             if adapter is not None
         },
+        observation_pipeline,
     )
     tool_registry = build_default_tool_registry(
         device_service,

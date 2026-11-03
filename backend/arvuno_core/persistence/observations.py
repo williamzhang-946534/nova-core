@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,9 @@ from arvuno_core.persistence.models import (
     ObservationAttributeDefinition,
     ObservationAttributePolicy,
     ObservationConsent,
+    ObservationIngestionBatch,
     ObservationSource,
+    ObservationSourceHeartbeat,
 )
 
 
@@ -143,6 +145,32 @@ class ObservationRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read an observation dedupe key.") from exc
 
+    def latest_for_series(
+        self,
+        *,
+        source_id: str,
+        entity_id: str | None,
+        subject_type: str | None,
+        subject_id: str | None,
+        attribute: str,
+    ) -> Observation | None:
+        try:
+            statement = (
+                select(Observation)
+                .where(
+                    Observation.source_id == source_id,
+                    Observation.entity_id == entity_id,
+                    Observation.subject_type == subject_type,
+                    Observation.subject_id == subject_id,
+                    Observation.attribute == attribute,
+                )
+                .order_by(Observation.received_at.desc(), Observation.observation_id.desc())
+                .limit(1)
+            )
+            return self._session.scalars(statement).first()
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read the latest observation.") from exc
+
     def append(self, observation: Observation) -> tuple[Observation, bool]:
         existing = self.get_by_dedupe_key(observation.dedupe_key)
         if existing is not None:
@@ -153,6 +181,30 @@ class ObservationRepository:
             return observation, False
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to append an observation.") from exc
+
+    def cleanup_expired(self, *, now: datetime, limit: int = 1000) -> int:
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        try:
+            ids = list(
+                self._session.scalars(
+                    select(Observation.observation_id)
+                    .where(
+                        Observation.retention_until.is_not(None),
+                        Observation.retention_until <= now,
+                    )
+                    .order_by(Observation.retention_until)
+                    .limit(limit)
+                )
+            )
+            if not ids:
+                return 0
+            result = self._session.execute(
+                delete(Observation).where(Observation.observation_id.in_(ids))
+            )
+            return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to clean up observations.") from exc
 
     def query(
         self,
@@ -209,9 +261,164 @@ class ObservationRepository:
             raise RepositoryError("Failed to query observations.") from exc
 
 
+class ObservationIngestionBatchRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get(self, batch_id: str) -> ObservationIngestionBatch | None:
+        try:
+            return self._session.get(ObservationIngestionBatch, batch_id)
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read an observation batch.") from exc
+
+    def start(
+        self,
+        *,
+        batch_id: str,
+        source_id: str | None,
+        adapter_id: str,
+        correlation_id: str | None,
+        received_at: datetime,
+        total: int,
+    ) -> ObservationIngestionBatch:
+        try:
+            batch = self.get(batch_id)
+            if batch is None:
+                batch = ObservationIngestionBatch(
+                    id=batch_id,
+                    source_id=source_id,
+                    source_type="adapter",
+                    adapter_id=adapter_id,
+                    correlation_id=correlation_id,
+                    received_at=received_at,
+                    status="processing",
+                    total=total,
+                    started_at=datetime.now(UTC),
+                )
+                self._session.add(batch)
+            else:
+                batch.source_id = source_id
+                batch.adapter_id = adapter_id
+                batch.correlation_id = correlation_id
+                batch.received_at = received_at
+                batch.status = "processing"
+                batch.total = total
+                batch.accepted = 0
+                batch.deduplicated = 0
+                batch.sampled = 0
+                batch.invalid = 0
+                batch.errors = []
+                batch.error = None
+                batch.completed_at = None
+                batch.started_at = datetime.now(UTC)
+            self._session.flush()
+            return batch
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to save an observation batch.") from exc
+
+    def complete(
+        self,
+        batch: ObservationIngestionBatch,
+        *,
+        accepted: int,
+        deduplicated: int,
+        sampled: int,
+        invalid: int,
+        errors: list[dict[str, object]],
+    ) -> ObservationIngestionBatch:
+        batch.status = "completed"
+        batch.accepted = accepted
+        batch.deduplicated = deduplicated
+        batch.sampled = sampled
+        batch.invalid = invalid
+        batch.errors = errors  # type: ignore[assignment]
+        batch.completed_at = datetime.now(UTC)
+        return batch
+
+    def fail(
+        self,
+        batch: ObservationIngestionBatch,
+        *,
+        error: str,
+    ) -> ObservationIngestionBatch:
+        try:
+            batch.status = "failed"
+            batch.error = error
+            batch.completed_at = datetime.now(UTC)
+            return batch
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to mark an observation batch failed.") from exc
+
+    def cleanup_expired(self, *, now: datetime, retention_days: int = 30) -> int:
+        cutoff = now - timedelta(days=retention_days)
+        try:
+            result = self._session.execute(
+                delete(ObservationIngestionBatch).where(
+                    ObservationIngestionBatch.received_at < cutoff
+                )
+            )
+            return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to clean up observation batches.") from exc
+
+
+class ObservationSourceHeartbeatRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def record_success(
+        self,
+        *,
+        source_id: str,
+        seen_at: datetime,
+        batch_id: str,
+    ) -> ObservationSourceHeartbeat:
+        try:
+            heartbeat = self._session.get(ObservationSourceHeartbeat, source_id)
+            if heartbeat is None:
+                heartbeat = ObservationSourceHeartbeat(source_id=source_id, status="healthy")
+                self._session.add(heartbeat)
+            heartbeat.last_seen_at = seen_at
+            heartbeat.last_success_at = seen_at
+            heartbeat.status = "healthy"
+            heartbeat.consecutive_failures = 0
+            heartbeat.last_batch_id = batch_id
+            heartbeat.last_error = None
+            return heartbeat
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to save an observation source heartbeat.") from exc
+
+    def record_failure(
+        self,
+        *,
+        source_id: str,
+        seen_at: datetime,
+        batch_id: str,
+        error: str,
+    ) -> ObservationSourceHeartbeat:
+        try:
+            heartbeat = self._session.get(ObservationSourceHeartbeat, source_id)
+            if heartbeat is None:
+                heartbeat = ObservationSourceHeartbeat(source_id=source_id, status="failed")
+                self._session.add(heartbeat)
+            heartbeat.last_seen_at = seen_at
+            heartbeat.last_failure_at = seen_at
+            heartbeat.status = "failed"
+            if heartbeat.consecutive_failures is None:
+                heartbeat.consecutive_failures = 0
+            heartbeat.consecutive_failures += 1
+            heartbeat.last_batch_id = batch_id
+            heartbeat.last_error = error
+            return heartbeat
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to save an observation source heartbeat.") from exc
+
+
 __all__ = [
+    "ObservationIngestionBatchRepository",
     "ObservationAttributeRepository",
     "ObservationConsentRepository",
     "ObservationRepository",
     "ObservationSourceRepository",
+    "ObservationSourceHeartbeatRepository",
 ]

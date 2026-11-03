@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Float,
     ForeignKey,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime
@@ -90,8 +92,17 @@ class DeviceState(Base):
     source: Mapped[str] = mapped_column(String(100))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
-    __table_args__ = (Index("ix_device_states_device_observed", "device_id", "observed_at"),)
+    __table_args__ = (
+        Index("ix_device_states_device_observed", "device_id", "observed_at"),
+        Index(
+            "uq_device_states_current",
+            "device_id",
+            unique=True,
+            sqlite_where=text("is_current = 1"),
+        ),
+    )
 
     device: Mapped[Device] = relationship(back_populates="states")
 
@@ -279,6 +290,67 @@ class ObservationSource(Base):
     __table_args__ = (
         Index("ix_observation_sources_type_status", "source_type", "status"),
         Index("ix_observation_sources_adapter", "adapter_id"),
+    )
+
+
+class ObservationIngestionBatch(Base):
+    __tablename__ = "observation_ingestion_batches"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    source_id: Mapped[str | None] = mapped_column(
+        ForeignKey("observation_sources.id", ondelete="RESTRICT")
+    )
+    source_type: Mapped[str] = mapped_column(String(50))
+    adapter_id: Mapped[str] = mapped_column(String(100))
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20))
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    accepted: Mapped[int] = mapped_column(Integer, default=0)
+    deduplicated: Mapped[int] = mapped_column(Integer, default=0)
+    sampled: Mapped[int] = mapped_column(Integer, default=0)
+    invalid: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('processing', 'completed', 'failed')",
+            name="ck_observation_ingestion_batches_status",
+        ),
+        Index("ix_observation_ingestion_batches_source_received", "source_id", "received_at"),
+        Index("ix_observation_ingestion_batches_status_received", "status", "received_at"),
+    )
+
+
+class ObservationSourceHeartbeat(Base):
+    __tablename__ = "observation_source_heartbeats"
+
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("observation_sources.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    last_batch_id: Mapped[str | None] = mapped_column(String(100))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('healthy', 'degraded', 'failed')",
+            name="ck_observation_source_heartbeats_status",
+        ),
     )
 
 

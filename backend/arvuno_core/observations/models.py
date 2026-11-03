@@ -4,6 +4,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from arvuno_core.devices.models import DeviceState
+
 TimeSource = Literal[
     "device_clock",
     "gateway_state_clock",
@@ -96,6 +98,35 @@ class ObservationResult(BaseModel):
     duplicate: bool = False
 
 
+class AdapterObservationBatch(BaseModel):
+    adapter_id: str = Field(min_length=1, max_length=100)
+    batch_id: str = Field(min_length=1, max_length=100)
+    received_at: datetime
+    correlation_id: str | None = Field(default=None, max_length=100)
+    states: list[DeviceState] = Field(default_factory=list)
+
+
+class ObservationItemResult(BaseModel):
+    external_id: str
+    attribute: str
+    status: Literal["accepted", "deduplicated", "sampled", "invalid"]
+    observation: ObservationRecord | None = None
+    error: dict[str, Any] | None = None
+
+
+class ObservationBatchResult(BaseModel):
+    batch_id: str
+    source_id: str | None
+    status: Literal["completed", "failed"]
+    total: int
+    accepted: int
+    deduplicated: int
+    sampled: int
+    invalid: int
+    items: list[ObservationItemResult] = Field(default_factory=list)
+    error: str | None = None
+
+
 class ObservationSourceRecord(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -120,7 +151,10 @@ class ObservationPage(BaseModel):
 
 
 __all__ = [
+    "AdapterObservationBatch",
     "ObservationInput",
+    "ObservationItemResult",
+    "ObservationBatchResult",
     "ObservationPage",
     "ObservationRecord",
     "ObservationResult",

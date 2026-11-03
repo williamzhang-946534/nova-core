@@ -1,5 +1,6 @@
 import contextlib
 import math
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -37,12 +38,17 @@ _ATTRIBUTE_ALLOWLIST = {
     "battery",
     "brightness",
     "brightness_pct",
+    "carbon_dioxide",
+    "co2",
     "current_temperature",
     "device_class",
     "friendly_name",
     "humidity",
+    "illuminance",
+    "illumination",
     "temperature",
     "unit_of_measurement",
+    "lux",
 }
 
 
@@ -240,12 +246,14 @@ class HomeAssistantAdapter:
         raw_state = str(entity.get("state", "unknown"))
         device_type = _device_type(external_id, attributes)
         normalized_attributes = _standard_attributes(raw_state, attributes, device_type)
+        gateway_observed_at = _gateway_timestamp(entity)
         return DeviceState(
             external_id=external_id,
             state=_normalize_state(raw_state, device_type),
             attributes=normalized_attributes,
             raw_state=raw_state[:255],
-            observed_at=_now(),
+            observed_at=gateway_observed_at or _now(),
+            observed_at_source="gateway_state_clock" if gateway_observed_at else "poll_clock",
         )
 
     def _validate_action(self, device: Device, action: DeviceAction) -> None:
@@ -317,6 +325,19 @@ def _now():
     from arvuno_core.devices.models import utc_now
 
     return utc_now()
+
+
+def _gateway_timestamp(entity: dict[str, Any]) -> datetime | None:
+    value = entity.get("last_updated") or entity.get("last_changed")
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
 
 
 def _optional_str(value: object) -> str | None:

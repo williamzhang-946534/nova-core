@@ -53,12 +53,15 @@ def test_registry_syncs_stable_projections_capabilities_states_and_disables_miss
             remaining = asyncio.run(registry.list_devices(adapter_id="mock", is_enabled=True))
 
             assert first.synced_devices == 6
-            assert first.state_snapshots == 6
+            assert first.state_snapshots == 0
+            assert len(first.states) == 6
+            assert {state.external_id for state in first.states} == {
+                device.external_id for device in devices
+            }
             assert second.synced_devices == 6
             assert stable_device is not None
             assert stable_device.id == first_id
-            assert state is not None
-            assert state.device_id == first_id
+            assert state is None
             assert devices[0].risk_level == DeviceRiskLevel.LOW
             assert selective.disabled_devices == 5
             assert len(remaining) == 1

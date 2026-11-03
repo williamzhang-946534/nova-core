@@ -233,6 +233,21 @@ Device Adapter / User Report / Future Source
 }
 ```
 
+### 8.3 ARS-02.3 工程边界
+
+当前工程实现已接入 Mock 与 Home Assistant 轮询状态：
+
+1. Adapter 只输出 `DeviceState`，不直接依赖 Observation Repository 或数据库。
+2. HA 优先把带时区的 `last_updated` / `last_changed` 解释为 `gateway_state_clock`；无可靠网关时间时标记 `poll_clock`，不会把轮询时间写成采集时间。
+3. `DeviceRegistry.sync_devices()` 只同步设备投影并返回状态，由 Pipeline 统一入库。
+4. Pipeline 负责来源与主体解析、受控属性映射、schema 校验、单位标准化、采样、dedupe、质量评估、批处理状态、来源心跳和 Observation 持久化。
+5. 迁移期兼容投影只保留每个 Device 一行 `is_current = 1` 的 `device_states`，不新增状态历史；Device Event Service 不再写状态。
+6. 保留清理提供有界、可重启的调用入口；Observation 30 天、motion / occupancy / invalid 7 天、ingestion batch 30 天。
+7. State Estimation Input 在本阶段只是明确的数据读取边界，尚未启动 ARS-02.4 的估计计算或触发器。
+8. Observation 不自动生成 Event。现有领域事件仍由原有 Event 语义发布，`task_started`、`tool_executed`、`task_completed` 和 `device_state_changed` 行为由回归测试保护。
+
+写入治理的量化口径见第 23 号文档 5.3 节。实现状态见第 24 号文档 ARS-02.3 分层验收。
+
 ## 9. 与现有 `device_states` 的关系
 
 目标状态：
@@ -279,4 +294,4 @@ Observation Model 的 ARS-02.2 / ARS-02.3 验收要求：
 6. 采样不会吞掉关键状态变化。
 7. 授权撤销和删除任务能阻止后续采集并处理既有数据。
 
-本文冻结后，才能进入 ARS-02.2 工程实现。
+ARS-02.2 与 ARS-02.3 的工程实现以本文和第 23、24 号文档为验收边界。

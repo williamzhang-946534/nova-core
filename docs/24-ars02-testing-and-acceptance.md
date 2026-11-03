@@ -118,16 +118,23 @@
 
 ## 6. Pipeline 测试
 
-1. Mock Adapter 输出进入 Observation Pipeline。
-2. HA Adapter 输出不直接写 Repository。
-3. Source 不存在、未启用或授权撤销时拒绝。
-4. 管线批量事务失败后重试不重复入库。
-5. 处理中崩溃重启后 pending 数据可恢复或明确丢弃并计数。
-6. Observation、兼容投影和 Event 不出现同一状态三写。
-7. `EnvironmentReconciler` 不再通过事件服务重复记录状态。
-8. HA 断线、超时、5xx、实体 unavailable 分别有质量结果。
-9. 轮询恢复后不会把整段断线前的旧值伪装为新观测。
-10. 管线指标覆盖 accepted、deduplicated、sampled、invalid、error。
+ARS-02.3 已覆盖的自动化测试：
+
+1. Mock 状态进入 Observation Pipeline，并生成当前 `device_states` 投影。
+2. HA shaped 状态只经统一输入接口映射，不依赖 HA HTTP 客户端或 Repository。
+3. `°F → °C` 标准化、gateway state clock 与 poll clock 的区分。
+4. 无变化轮询采样、间隔内重要变化保留、同 payload / 同批次重试幂等。
+5. 延迟、未来时间、越界、类型错误、缺少单位、来源缺失、来源停用。
+6. 主体空间归属、持久化、重启恢复、批处理与心跳恢复。
+7. 持久化异常后的 failed batch、失败计数和可重试行为。
+8. 保留清理和 Observation 不自动产生 Event。
+
+仍需真实环境或后续子阶段验证：
+
+1. 真实 HA 断线、超时、5xx、重连和长时间不可用后的时间语义。
+2. 真实硬件的 `last_updated` / `last_changed` 可靠性。
+3. 目标家庭规模的 SQLite 压测、WAL 峰值和 P95 查询数据。
+4. 授权撤销后的删除任务与所有衍生副本处理，需等待 State Estimation 与 Snapshot 证据链完成。
 
 ## 7. State Estimation 测试
 
@@ -292,8 +299,8 @@ API：
 1. 单一写入所有权完成。
 2. 幂等、采样、去重、质量标记可用。
 3. 重复写路径修复。
-4. 保留任务和写入指标可用。
-5. SQLite 基准通过。
+4. 有界保留清理和批处理 / 心跳计数可用。
+5. 代码级 SQLite 写入策略与容量估算已确认；真实硬件性能基准留到 ARS-02.6 复核。
 
 ### ARS-02.4 State Estimation 验收
 

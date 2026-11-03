@@ -1,7 +1,8 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from arvuno_core.config import Settings
 from arvuno_core.persistence import database as database_module
@@ -26,7 +27,9 @@ EXPECTED_TABLES = {
     "observation_attribute_definitions",
     "observation_attribute_policies",
     "observation_consents",
+    "observation_ingestion_batches",
     "observation_sources",
+    "observation_source_heartbeats",
     "observations",
     "provider_logs",
     "space_paths",
@@ -95,6 +98,7 @@ EXPECTED_COLUMNS = {
         "source",
         "observed_at",
         "created_at",
+        "is_current",
     },
     "devices": {
         "id",
@@ -258,6 +262,37 @@ EXPECTED_COLUMNS = {
         "created_at",
         "updated_at",
     },
+    "observation_ingestion_batches": {
+        "id",
+        "source_id",
+        "source_type",
+        "adapter_id",
+        "correlation_id",
+        "received_at",
+        "status",
+        "total",
+        "accepted",
+        "deduplicated",
+        "sampled",
+        "invalid",
+        "errors",
+        "error",
+        "started_at",
+        "completed_at",
+        "created_at",
+        "updated_at",
+    },
+    "observation_source_heartbeats": {
+        "source_id",
+        "last_seen_at",
+        "last_success_at",
+        "last_failure_at",
+        "status",
+        "consecutive_failures",
+        "last_batch_id",
+        "last_error",
+        "updated_at",
+    },
     "observations": {
         "observation_id",
         "source_id",
@@ -416,6 +451,88 @@ EXPECTED_COLUMNS = {
 }
 
 
+def test_observation_pipeline_migration_preserves_device_history(tmp_path: Path) -> None:
+    manager = DatabaseManager(phase_settings(tmp_path))
+    observed_at = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
+
+    try:
+        manager.initialize_database()
+        manager.downgrade("f3d2c8a67b01")
+
+        with manager.engine.begin() as connection:
+            for device_id in ("device-a", "device-b"):
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO devices (
+                            id, adapter_id, external_id, name, normalized_name,
+                            device_type, area, manufacturer, model, is_online,
+                            is_enabled, risk_level, capabilities, metadata,
+                            last_seen_at, created_at, updated_at
+                        ) VALUES (
+                            :id, 'mock', :id, :id, :id, 'sensor_temperature', NULL,
+                            NULL, NULL, 1, 1, 'low', '{}', '{}',
+                            :timestamp, :timestamp, :timestamp
+                        )
+                        """
+                    ),
+                    {"id": device_id, "timestamp": observed_at.isoformat()},
+                )
+
+            state_rows = [
+                ("state-a-old", "device-a", observed_at - timedelta(minutes=20)),
+                ("state-a-middle", "device-a", observed_at - timedelta(minutes=10)),
+                ("state-a-new", "device-a", observed_at),
+                ("state-b-only", "device-b", observed_at - timedelta(minutes=5)),
+            ]
+            for state_id, device_id, timestamp in state_rows:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO device_states (
+                            id, device_id, state, attributes, raw_state, source,
+                            observed_at, created_at
+                        ) VALUES (
+                            :id, :device_id, 'on', '{}', 'on', 'mock',
+                            :observed_at, :created_at
+                        )
+                        """
+                    ),
+                    {
+                        "id": state_id,
+                        "device_id": device_id,
+                        "observed_at": timestamp.isoformat(),
+                        "created_at": (timestamp + timedelta(seconds=1)).isoformat(),
+                    },
+                )
+
+        manager.upgrade()
+        with manager.engine.connect() as connection:
+            current_states = dict(
+                connection.execute(
+                    text("SELECT id, is_current FROM device_states ORDER BY id")
+                ).all()
+            )
+
+        assert current_states == {
+            "state-a-old": False,
+            "state-a-middle": False,
+            "state-a-new": True,
+            "state-b-only": True,
+        }
+
+        manager.downgrade("f3d2c8a67b01")
+        with manager.engine.connect() as connection:
+            history_count = connection.scalar(text("SELECT COUNT(*) FROM device_states"))
+
+        assert history_count == 4
+        assert "is_current" not in {
+            column["name"] for column in inspect(manager.engine).get_columns("device_states")
+        }
+    finally:
+        manager.dispose()
+
+
 def phase_settings(tmp_path: Path, **overrides: object) -> Settings:
     values: dict[str, object] = {
         "environment": "test",
@@ -481,6 +598,24 @@ def test_migration_creates_documented_constraints_and_indexes(tmp_path: Path) ->
 
         event_indexes = {
             index["name"]: tuple(index["column_names"]) for index in inspector.get_indexes("events")
+        }
+
+        device_state_indexes = {
+            index["name"]: tuple(index["column_names"])
+            for index in inspector.get_indexes("device_states")
+        }
+        assert device_state_indexes == {
+            "ix_device_states_device_observed": ("device_id", "observed_at"),
+            "uq_device_states_current": ("device_id",),
+        }
+
+        batch_indexes = {
+            index["name"]: tuple(index["column_names"])
+            for index in inspector.get_indexes("observation_ingestion_batches")
+        }
+        assert batch_indexes == {
+            "ix_observation_ingestion_batches_source_received": ("source_id", "received_at"),
+            "ix_observation_ingestion_batches_status_received": ("status", "received_at"),
         }
         assert event_indexes == {
             "ix_events_correlation": ("correlation_id",),

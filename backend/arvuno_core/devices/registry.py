@@ -34,7 +34,8 @@ class RegisteredDeviceState(DeviceState):
 class DeviceSyncResult:
     synced_devices: int
     disabled_devices: int
-    state_snapshots: int
+    state_snapshots: int = 0
+    states: tuple[DeviceState, ...] = ()
 
 
 class DeviceRegistry:
@@ -80,19 +81,6 @@ class DeviceRegistry:
                         ],
                     )
                     arvuno_id_by_external_id[device.external_id] = projection.id
-                snapshots = 0
-                for external_id, arvuno_id in arvuno_id_by_external_id.items():
-                    state = state_by_external_id.get(external_id)
-                    if state is not None:
-                        repository.add_state_snapshot(
-                            arvuno_id,
-                            state=state.state.value,
-                            attributes=state.attributes,
-                            raw_state=state.raw_state,
-                            source=adapter.adapter_id,
-                            observed_at=state.observed_at,
-                        )
-                        snapshots += 1
                 disabled = repository.disable_not_in_external_ids(
                     adapter.adapter_id,
                     [device.external_id for device in devices],
@@ -101,7 +89,12 @@ class DeviceRegistry:
                 return DeviceSyncResult(
                     synced_devices=len(devices),
                     disabled_devices=disabled,
-                    state_snapshots=snapshots,
+                    state_snapshots=0,
+                    states=tuple(
+                        state
+                        for external_id, state in state_by_external_id.items()
+                        if external_id in arvuno_id_by_external_id
+                    ),
                 )
 
         return await asyncio.to_thread(execute)
@@ -162,6 +155,7 @@ class DeviceRegistry:
                 attributes=snapshot.attributes,
                 raw_state=snapshot.raw_state,
                 observed_at=snapshot.observed_at,
+                observed_at_source=getattr(snapshot, "observed_at_source", "unknown"),
             )
 
         return await self._read(execute)

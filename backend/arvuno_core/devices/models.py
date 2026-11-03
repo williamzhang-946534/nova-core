@@ -98,6 +98,12 @@ class DeviceState(BaseModel):
     attributes: dict[str, Any] = Field(default_factory=dict)
     raw_state: str | None = Field(default=None, max_length=255)
     observed_at: datetime = Field(default_factory=utc_now)
+    observed_at_source: Literal[
+        "device_clock",
+        "gateway_state_clock",
+        "poll_clock",
+        "unknown",
+    ] = "poll_clock"
 
 
 class DeviceErrorDetail(BaseModel):

@@ -62,11 +62,32 @@ def _quality_status(issues: list[dict[str, Any]]) -> str:
 
 
 def _source_record(source: ObservationSource) -> ObservationSourceRecord:
-    return ObservationSourceRecord.model_validate(source)
+    record = ObservationSourceRecord.model_validate(source)
+    record.created_at = _stored_datetime(record.created_at)
+    record.updated_at = _stored_datetime(record.updated_at)
+    return record
 
 
 def _observation_record(observation: Observation) -> ObservationRecord:
-    return ObservationRecord.model_validate(observation)
+    record = ObservationRecord.model_validate(observation)
+    for field in (
+        "observed_at",
+        "received_at",
+        "processed_at",
+        "valid_from",
+        "valid_until",
+        "freshness_evaluated_at",
+        "retention_until",
+        "created_at",
+    ):
+        value = getattr(record, field)
+        if value is not None:
+            setattr(record, field, _stored_datetime(value))
+    return record
+
+
+def _stored_datetime(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class ObservationService:
@@ -494,9 +515,16 @@ class ObservationService:
         effective_at = observed_at or received_at
         assignments = uow.space_assignments.list_for_entity(entity_id)
         for assignment in assignments:
-            if assignment.valid_from <= effective_at and (
-                assignment.valid_until is None or assignment.valid_until > effective_at
-            ):
+            valid_from = _stored_datetime(assignment.valid_from)
+            valid_until = (
+                _stored_datetime(assignment.valid_until)
+                if assignment.valid_until is not None
+                else None
+            )
+            is_valid = valid_from <= effective_at and (
+                valid_until is None or valid_until > effective_at
+            )
+            if is_valid:
                 return assignment.space_id
         return None
 

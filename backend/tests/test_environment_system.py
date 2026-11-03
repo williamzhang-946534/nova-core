@@ -14,6 +14,8 @@ from arvuno_core.environment.context import EnvironmentContextService, area_summ
 from arvuno_core.environment.reconciliation import EnvironmentReconciler
 from arvuno_core.events.bus import EventBus
 from arvuno_core.events.service import DeviceEventService
+from arvuno_core.observations.pipeline import ObservationPipeline
+from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -128,8 +130,9 @@ def test_reconciliation_establishes_baseline_and_publishes_only_differences(
         registry = DeviceRegistry(factory)
         await registry.sync_devices(adapter)
         event_bus = EventBus(factory)
+        pipeline = ObservationPipeline(factory, ObservationService(factory))
         publisher = DeviceEventService(registry, event_bus)
-        reconciler = EnvironmentReconciler(registry, publisher)
+        reconciler = EnvironmentReconciler(registry, publisher, pipeline)
         allowlist = ["mock.switch.airer", "mock.sensor.temperature"]
 
         baseline = await reconciler.reconcile(adapter, allowlist)

@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from arvuno_core.devices.errors import (
     AdapterTimeoutError,
@@ -18,6 +20,7 @@ from arvuno_core.devices.models import (
 from arvuno_core.devices.registry import DeviceRegistry
 from arvuno_core.events.models import utc_now
 from arvuno_core.events.service import DeviceEventService
+from arvuno_core.observations.pipeline import ObservationPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +36,15 @@ class ReconciliationResult:
 class EnvironmentReconciler:
     """Compares current allowlisted states with Arvuno's latest stored observations."""
 
-    def __init__(self, registry: DeviceRegistry, publisher: DeviceEventService) -> None:
+    def __init__(
+        self,
+        registry: DeviceRegistry,
+        publisher: DeviceEventService,
+        observation_pipeline: ObservationPipeline,
+    ) -> None:
         self._registry = registry
         self._publisher = publisher
+        self._observation_pipeline = observation_pipeline
 
     async def reconcile(
         self,
@@ -69,13 +78,15 @@ class EnvironmentReconciler:
                     reconciled += 1
                 continue
 
-            await self._registry.record_observed_state(
-                registered.id,
-                state=current.state.value,
-                attributes=current.attributes,
-                source=adapter.adapter_id,
-                observed_at=current.observed_at,
+            ingestion = await self._observation_pipeline.ingest_states(
+                adapter_id=adapter.adapter_id,
+                states=[current],
+                batch_id=f"poll:{uuid4()}",
+                received_at=datetime.now(UTC),
             )
+            if ingestion.status == "failed":
+                failures += 1
+                continue
             if previous is None:
                 continue
 

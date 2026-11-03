@@ -78,6 +78,7 @@ def test_polling_publishes_device_events_and_updates_environment(tmp_path: Path)
                 EnvironmentReconciler(
                     registry,
                     DeviceEventService(registry, app.state.event_bus),
+                    app.state.observation_pipeline,
                 ),
                 {adapter.adapter_id: adapter},
                 {

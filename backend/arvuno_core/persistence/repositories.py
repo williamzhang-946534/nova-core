@@ -291,6 +291,7 @@ class DeviceRepository(BaseRepository[Device]):
                 raw_state=raw_state,
                 source=source,
                 observed_at=observed_at,
+                is_current=False,
             )
             self._session.add(snapshot)
             return snapshot
@@ -313,6 +314,19 @@ class DeviceRepository(BaseRepository[Device]):
                 raise RepositoryError("Device projection does not exist.")
             projection.is_online = state != "unavailable"
             projection.last_seen_at = observed_at
+            current = self._session.scalars(
+                select(DeviceState).where(
+                    DeviceState.device_id == device_id,
+                    DeviceState.is_current.is_(True),
+                )
+            ).first()
+            if current is not None:
+                current.state = state
+                current.attributes = attributes
+                current.raw_state = raw_state
+                current.source = source
+                current.observed_at = observed_at
+                return current
             snapshot = DeviceState(
                 device_id=device_id,
                 state=state,
@@ -320,6 +334,7 @@ class DeviceRepository(BaseRepository[Device]):
                 raw_state=raw_state,
                 source=source,
                 observed_at=observed_at,
+                is_current=True,
             )
             self._session.add(snapshot)
             return snapshot
@@ -328,6 +343,14 @@ class DeviceRepository(BaseRepository[Device]):
 
     def latest_state(self, device_id: str) -> DeviceState | None:
         try:
+            current = self._session.scalars(
+                select(DeviceState).where(
+                    DeviceState.device_id == device_id,
+                    DeviceState.is_current.is_(True),
+                )
+            ).first()
+            if current is not None:
+                return current
             statement = (
                 select(DeviceState)
                 .where(DeviceState.device_id == device_id)

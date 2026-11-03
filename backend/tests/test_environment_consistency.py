@@ -42,7 +42,11 @@ def mock_polling_runtime(app) -> DevicePollingRuntime:
     registry = app.state.device_registry
     adapter = app.state.mock_device_adapter
     return DevicePollingRuntime(
-        EnvironmentReconciler(registry, DeviceEventService(registry, app.state.event_bus)),
+        EnvironmentReconciler(
+            registry,
+            DeviceEventService(registry, app.state.event_bus),
+            app.state.observation_pipeline,
+        ),
         {adapter.adapter_id: adapter},
         {adapter.adapter_id: [device.external_id for device in asyncio.run(adapter.get_devices())]},
         interval_seconds=3600,

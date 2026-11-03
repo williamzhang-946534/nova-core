@@ -31,6 +31,8 @@ from arvuno_core.events.models import (
     DeviceStateChangedPayload,
     SensorUpdatedPayload,
 )
+from arvuno_core.observations.pipeline import ObservationPipeline
+from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -95,7 +97,11 @@ def automation_environment(
     adapter = MockDeviceAdapter(clock=clock)
     registry = DeviceRegistry(factory)
     event_bus = EventBus(factory)
-    device_service = DeviceApplicationService(registry, {"mock": adapter})
+    observation_pipeline = ObservationPipeline(
+        factory,
+        ObservationService(factory),
+    )
+    device_service = DeviceApplicationService(registry, {"mock": adapter}, observation_pipeline)
     execution_counter = itertools.count(1)
     tool_executor = ToolExecutor(
         registry=build_default_tool_registry(device_service),

@@ -23,7 +23,7 @@ class EventPage:
 
 
 class DeviceEventService:
-    """Localizes adapter events, records observed state, and publishes Arvuno events."""
+    """Localizes adapter events and publishes Arvuno domain events."""
 
     def __init__(self, registry: DeviceRegistry, event_bus: EventBus) -> None:
         self._registry = registry
@@ -45,20 +45,7 @@ class DeviceEventService:
             device_type=registered.device_type,
         )
         await self._event_bus.publish(arvuno_event)
-        await self._record_observed_state(event, registered.id)
         return arvuno_event
-
-    async def _record_observed_state(self, event: DeviceEvent, device_id: str) -> None:
-        payload = event.payload
-        current_state = str(payload.get("current_state", "unavailable"))
-        attributes = payload.get("attributes")
-        await self._registry.record_observed_state(
-            device_id,
-            state=current_state,
-            attributes=attributes if isinstance(attributes, dict) else {},
-            source=event.source,
-            observed_at=event.occurred_at,
-        )
 
 
 class EventQueryService:

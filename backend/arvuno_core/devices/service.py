@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -16,6 +16,7 @@ from arvuno_core.devices.interface import DeviceAdapter
 from arvuno_core.devices.models import DeviceAction, DeviceStateName
 from arvuno_core.devices.registry import DeviceRegistry, RegisteredDevice
 from arvuno_core.devices.verification import DeviceStateVerifier
+from arvuno_core.observations.pipeline import ObservationPipeline
 
 
 @dataclass(frozen=True)
@@ -35,11 +36,13 @@ class DeviceApplicationService:
         self,
         registry: DeviceRegistry,
         adapters: dict[str, DeviceAdapter],
+        observation_pipeline: ObservationPipeline,
         *,
         verifier: DeviceStateVerifier | None = None,
     ) -> None:
         self._registry = registry
         self._adapters = dict(adapters)
+        self._observation_pipeline = observation_pipeline
         self._verifier = verifier or DeviceStateVerifier()
 
     async def list_devices(
@@ -69,13 +72,7 @@ class DeviceApplicationService:
     async def get_state(self, device_id: str) -> DeviceServiceResult:
         device = await self.get_registered_device(device_id)
         state = await self._adapter(device.adapter_id).get_state(device.external_id)
-        await self._registry.record_observed_state(
-            device_id,
-            state=state.state.value,
-            attributes=state.attributes,
-            source=device.adapter_id,
-            observed_at=state.observed_at,
-        )
+        await self._record(device, state)
         return DeviceServiceResult(
             before_state=state.state.value,
             actual_state=state.state.value,
@@ -97,7 +94,7 @@ class DeviceApplicationService:
         adapter = self._adapter(device.adapter_id)
         action_request = DeviceAction(action=action, parameters=parameters)  # type: ignore[arg-type]
         before = await adapter.get_state(device.external_id)
-        await self._record(device, before.state.value, before.attributes, before.observed_at)
+        await self._record(device, before)
         if before.state == DeviceStateName.UNAVAILABLE:
             raise DeviceUnavailableError("The device is unavailable.")
 
@@ -112,12 +109,7 @@ class DeviceApplicationService:
                     actual,
                     required_state=expected_state,
                 )
-                await self._record(
-                    device,
-                    actual.state.value,
-                    actual.attributes,
-                    actual.observed_at,
-                )
+                await self._record(device, actual)
                 verification_detail = (
                     f"verified={verification.verified};actual_state={actual.state.value}"
                 )
@@ -143,7 +135,7 @@ class DeviceApplicationService:
                 "The device did not reach the requested state.",
                 detail=f"expected={expected_state.value};actual={actual.state.value}",
             )
-        await self._record(device, actual.state.value, actual.attributes, actual.observed_at)
+        await self._record(device, actual)
         return DeviceServiceResult(
             before_state=before.state.value,
             actual_state=actual.state.value,
@@ -162,17 +154,19 @@ class DeviceApplicationService:
     async def _record(
         self,
         device: RegisteredDevice,
-        state: str,
-        attributes: dict[str, Any],
-        observed_at: datetime,
+        state: Any,
     ) -> None:
-        await self._registry.record_observed_state(
-            device.id,
-            state=state,
-            attributes=attributes,
-            source=device.adapter_id,
-            observed_at=observed_at,
+        ingestion = await self._observation_pipeline.ingest_states(
+            adapter_id=device.adapter_id,
+            states=[state],
+            batch_id=f"device:{uuid4()}",
+            received_at=datetime.now(UTC),
         )
+        if ingestion.status == "failed":
+            raise AdapterUnavailableError(
+                "The observed device state could not be persisted.",
+                detail=f"batch_id={ingestion.batch_id};error={ingestion.error}",
+            )
 
 
 __all__ = ["DeviceApplicationService", "DeviceServiceResult"]

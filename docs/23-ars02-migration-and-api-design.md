@@ -197,14 +197,20 @@ Agent Runtime
 
 1. `observation_ingestion_batches`
 2. `observation_source_heartbeats`
-3. `privacy_deletion_jobs`
-4. `privacy_deletion_job_items`
 
 内容：
 
 1. 修复现有重复写路径，Pipeline 成为唯一兼容投影写入者。
 2. 建立幂等、采样、去重、质量评估和批处理。
 3. 建立保留任务和来源健康状态。
+
+已实现迁移 `b7d4e6c9a210`：
+
+1. `device_states` 增加 `is_current`，默认 `0`。
+2. 升级时按 `observed_at DESC, created_at DESC, id DESC` 为每台设备唯一标记最新一行为当前投影，所有历史行保留。
+3. 在 SQLite 上创建 `is_current = 1` 的 `device_id` partial unique index，保证一台设备最多一个当前投影。
+4. 新增 ingestion batch 与来源心跳表及查询索引；回滚只移除本迁移结构，不删除历史 `device_states`。
+5. `privacy_deletion_jobs` 不在本迁移中提前创建；删除任务必须待 State Estimation、Snapshot 和证据链接落地后在 ARS-02.5 一并实现，避免半套不可审计删除。
 
 ### ARS-02.4：State Estimation 与 Context v2
 
@@ -264,11 +270,11 @@ Agent Runtime
 
 ### 5.2 写入策略
 
-1. SQLite 启用 WAL、合理 `busy_timeout` 和 `synchronous NORMAL`；具体参数需在 ARS-02.3 压测后确认。
-2. Observation 批量入库，单事务控制行数，避免整个轮询批次一个超长事务。
+1. SQLite 当前启用 `busy_timeout=5000`、WAL、`synchronous=NORMAL` 和 `foreign_keys=ON`。
+2. Observation 按轮询批次进入 Pipeline，批处理状态独立持久化；单次保留删除限制行数并循环执行，避免长锁。
 3. 保留一个后台写入队列或串行写入器，避免多任务并发写造成锁冲突。
 4. UPSERT 依赖 `dedupe_key`，失败重试不得生成重复观测。
-5. 当前读模型和估计历史同事务更新，Snapshot 可异步生成。
+5. 迁移期当前 `device_states` 投影与 Observation 入库结果保持一致；估计历史同事务要求从 ARS-02.4 开始生效。
 6. 删除任务分批执行，避免长锁和大 WAL 增长。
 7. 维护窗口执行 `wal_checkpoint(TRUNCATE)`；是否 `VACUUM` 需在备份和停机策略确认后执行。
 
@@ -276,11 +282,19 @@ Agent Runtime
 
 单条 Observation 估算为 0.6 KB 到 1.2 KB，加索引约为 1.5 到 3 倍存储。示例：
 
-| 输入 | 每日原始行 | 30 天估算 |
-| --- | --- | --- |
-| 20 个低频传感器，5 分钟一条 | 5,760 | 约 10 到 30 MB |
-| 50 个传感器，1 分钟一条 | 72,000 | 约 130 到 400 MB |
-| 200 个传感器，10 秒一条 | 1,728,000 | 不建议全量入库，必须采样 |
+| 场景 | 输入速率 | 每日输入 | 30 天无治理总量估算 | 默认治理后的长期状态 |
+| --- | --- | --- | --- | --- |
+| 20 个低频传感器，5 分钟轮询 | 4 reads/min | 5,760 | 约 155 到 311 MB | 无变化轮询接近 0 条 Observation，仅更新来源心跳；有变化数据按 30 天上限约 155 到 311 MB |
+| 50 个传感器，1 分钟轮询 | 50 reads/min | 72,000 | 约 1.95 到 3.9 GB | 数值类按最小间隔与变化阈值节流；无变化轮询接近 0 条 Observation |
+| 200 个传感器，10 秒轮询 | 1,200 reads/min | 1,728,000 | 不允许全量入库 | 60 秒最小间隔的理论接受上限为 288,000 条/日；全部不变时仅保留来源心跳，理论稳态可降到接近心跳表规模 |
+
+估算口径：
+
+1. Observation 行大小按 0.6 到 1.2 KB 计。
+2. 表格总量已包含 1.5 到 3 倍索引开销。
+3. 输入速率表示 Adapter 看到的候选读数，不等同于 SQLite Observation 写入速率。
+4. 来源心跳按来源与轮询批次更新，不是每个传感器各写一条。
+5. 清理后的长期规模由各类保留期决定；普通 30 天、motion / occupancy / invalid 7 天、batch 30 天。
 
 默认策略：
 

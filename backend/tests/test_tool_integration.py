@@ -13,6 +13,8 @@ from arvuno_core.devices.models import ActionResult
 from arvuno_core.devices.registry import DeviceRegistry
 from arvuno_core.devices.service import DeviceApplicationService
 from arvuno_core.events.bus import EventBus
+from arvuno_core.observations.pipeline import ObservationPipeline
+from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -43,7 +45,8 @@ def integration_parts(
     counter = itertools.count(1)
     adapter = MockDeviceAdapter()
     registry = DeviceRegistry(factory)
-    service = DeviceApplicationService(registry, {"mock": adapter})
+    observation_pipeline = ObservationPipeline(factory, ObservationService(factory))
+    service = DeviceApplicationService(registry, {"mock": adapter}, observation_pipeline)
     event_bus = EventBus(factory)
     executor = ToolExecutor(
         registry=build_default_tool_registry(service),
@@ -169,7 +172,15 @@ def test_successful_adapter_call_with_wrong_actual_state_is_not_success(tmp_path
         async def scenario() -> None:
             adapter = PostActionVerificationFailureAdapter()
             registry = DeviceRegistry(lambda: SqlAlchemyUnitOfWork(manager.session_factory))
-            service = DeviceApplicationService(registry, {"mock": adapter})
+
+            def factory() -> SqlAlchemyUnitOfWork:
+                return SqlAlchemyUnitOfWork(manager.session_factory)
+
+            service = DeviceApplicationService(
+                registry,
+                {"mock": adapter},
+                ObservationPipeline(factory, ObservationService(factory)),
+            )
             executor = ToolExecutor(
                 registry=build_default_tool_registry(service),
                 safety_policy=SafetyPolicy(service, tool_permissions={}),

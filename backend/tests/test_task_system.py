@@ -14,6 +14,8 @@ from arvuno_core.devices.mock import MockDeviceAdapter
 from arvuno_core.devices.registry import DeviceRegistry
 from arvuno_core.devices.service import DeviceApplicationService
 from arvuno_core.events.bus import EventBus
+from arvuno_core.observations.pipeline import ObservationPipeline
+from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -85,7 +87,8 @@ def task_environment(
     adapter = MockDeviceAdapter()
     registry = DeviceRegistry(factory)
     event_bus = EventBus(factory)
-    device_service = DeviceApplicationService(registry, {"mock": adapter})
+    observation_pipeline = ObservationPipeline(factory, ObservationService(factory))
+    device_service = DeviceApplicationService(registry, {"mock": adapter}, observation_pipeline)
     task_counter = itertools.count(1)
     step_counter = itertools.count(1)
     execution_counter = itertools.count(1)

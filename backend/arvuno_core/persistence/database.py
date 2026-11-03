@@ -40,7 +40,7 @@ class DatabaseManager:
                 connect_args={"check_same_thread": False},
                 future=True,
             )
-            event.listen(engine, "connect", self._enable_sqlite_foreign_keys)
+            event.listen(engine, "connect", self._configure_sqlite_connection)
             self._engine = engine
         return self._engine
 
@@ -55,10 +55,15 @@ class DatabaseManager:
         return self._session_factory
 
     @staticmethod
-    def _enable_sqlite_foreign_keys(dbapi_connection: object, _record: object) -> None:
+    def _configure_sqlite_connection(dbapi_connection: object, _record: object) -> None:
         cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        try:
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA journal_mode=WAL").fetchall()
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
 
     def ensure_local_directories(self) -> None:
         self._settings.ensure_local_directories()

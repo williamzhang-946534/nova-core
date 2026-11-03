@@ -12,7 +12,9 @@ from arvuno_core.persistence.exceptions import RepositoryError
 from arvuno_core.persistence.observations import (
     ObservationAttributeRepository,
     ObservationConsentRepository,
+    ObservationIngestionBatchRepository,
     ObservationRepository,
+    ObservationSourceHeartbeatRepository,
     ObservationSourceRepository,
 )
 from arvuno_core.persistence.provider_logs import ProviderLogRepository
@@ -48,6 +50,8 @@ class SqlAlchemyUnitOfWork:
         self.observation_attributes: ObservationAttributeRepository | None = None
         self.observation_consents: ObservationConsentRepository | None = None
         self.observations: ObservationRepository | None = None
+        self.observation_batches: ObservationIngestionBatchRepository | None = None
+        self.observation_heartbeats: ObservationSourceHeartbeatRepository | None = None
         self.system_settings: SystemSettingRepository | None = None
         self.tools: ToolRepository | None = None
         self.tool_executions: ToolExecutionRepository | None = None
@@ -69,6 +73,8 @@ class SqlAlchemyUnitOfWork:
         self.observation_attributes = ObservationAttributeRepository(self._session)
         self.observation_consents = ObservationConsentRepository(self._session)
         self.observations = ObservationRepository(self._session)
+        self.observation_batches = ObservationIngestionBatchRepository(self._session)
+        self.observation_heartbeats = ObservationSourceHeartbeatRepository(self._session)
         self.system_settings = SystemSettingRepository(self._session)
         self.tools = ToolRepository(self._session)
         self.tool_executions = ToolExecutionRepository(self._session)
@@ -116,6 +122,8 @@ class SqlAlchemyUnitOfWork:
             self.observation_attributes = None
             self.observation_consents = None
             self.observations = None
+            self.observation_batches = None
+            self.observation_heartbeats = None
             self.system_settings = None
             self.tools = None
             self.tool_executions = None
