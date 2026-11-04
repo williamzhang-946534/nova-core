@@ -30,7 +30,19 @@ erDiagram
     TOOL ||--o{ TOOL_EXECUTION : invoked_by
     AUTOMATION ||--o{ AUTOMATION_RUN : triggers
     EVENT ||--o{ AUTOMATION_RUN : evaluates
+    MEMORY_CONSENT ||--o{ USER_PREFERENCE : authorizes
+    MEMORY ||--o{ MEMORY_EVIDENCE : cites
+    MEMORY ||--o{ MEMORY_REVISION : records
+    MEMORY ||--o{ MEMORY_PROCEDURE_VERSION : versions
+    MEMORY_PROCEDURE_VERSION ||--o{ MEMORY_PROCEDURE_VALIDATION : validates
+    MEMORY ||--o{ MEMORY_ACCESS_LOG : audits
+    USER_PREFERENCE ||--o{ MEMORY_ACCESS_LOG : audits
 ```
+
+`memory_evidence` 中的 `evidence_type` 和 `evidence_id` 是应用层维护的多态引用，
+分别指向 `observations`、`events`、`tasks`、`conversation_messages`、
+`environment_snapshots` 或 `tool_executions`。SQLite 层不为多态引用建立物理外键；
+Memory Repository 在写入证据前验证目标记录存在，读取时关联原始记录。
 
 ## 表结构
 
@@ -270,7 +282,8 @@ AI 模型调用日志。
 
 ### 14. `user_preferences`
 
-用户偏好。
+用户偏好是用户偏好的权威存储，长期记忆表不得复制一份结构化偏好键值。
+服务要求偏好来源必须是用户，并保留授权、确认时间、有效期和适用范围。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -280,31 +293,197 @@ AI 模型调用日志。
 | category | string | 类别 |
 | description | string nullable | 描述 |
 | source | string | 来源 |
+| source_type | string | 权威来源类型，约束为 `user` |
+| source_record_id | string | 用户陈述、会话消息或设置操作记录 ID |
+| status | string | `draft` / `active` / `revoked` |
+| scope | JSON | 适用环境、房间、时间或用途范围 |
+| conversation_id | UUID FK nullable | 来源对话 |
+| consent_id | UUID FK nullable | `memory_consents` 授权记录 |
 | confirmed | boolean | 用户是否确认 |
+| confirmed_at | timestamp nullable | 用户确认时间 |
+| valid_from | timestamp | 生效开始时间 |
+| expires_at | timestamp nullable | 业务过期时间 |
+| retention_until | timestamp nullable | 撤销或过期后保留截止时间 |
+| superseded_at | timestamp nullable | 被替代或撤销时间 |
 | created_at | timestamp | 创建时间 |
 | updated_at | timestamp | 更新时间 |
 
+约束和索引：
+
+- `(key)` 唯一；同一键不允许同时存在多个 draft 或 active 偏好，服务在创建时检查。
+- `confirmed` 与 `confirmed_at` 必须一致。
+- `source_type` 必须为 `user` 且 `source_record_id` 非空。
+- 索引 `(status, key)`，并关联对话与授权记录。
+
+draft 偏好不参与检索；active 偏好超过 `expires_at` 后由生命周期清理改为 revoked。
+
 ### 15. `memories`
 
-长期记忆与任务经验。
+持久长期记忆。表不保存 Working Memory 的完整对话上下文、未筛选传感器流或
+原始事件历史；这些记录继续留在 conversations、observations、events、tasks 和
+tool_executions 中。Memory 保存经过筛选的事实、事件摘要、经验和可验证流程，
+并通过 evidence 引用原始历史。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | UUID PK | 记忆 ID |
-| memory_type | string | preference / task / event / fact |
+| memory_type | string | `episodic` / `semantic` / `procedural` |
 | title | string | 标题 |
 | content | text | 内容 |
 | summary | text nullable | 摘要 |
 | keywords | JSON | 关键词 |
-| importance | integer | 重要性 |
+| importance | integer | 重要性，1 到 5 |
 | source_type | string | 来源类型 |
-| source_id | string nullable | 来源 ID |
+| source_id | string nullable | 来源记录 ID |
 | user_confirmed | boolean | 用户确认 |
+| status | string | `active` / `candidate` / `corrected` / `superseded` / `expired` / `archived` |
+| confidence | float | 置信度，0 到 1 |
+| verification_status | string | `unverified` / `verified` / `rejected` |
+| owner_id | string | 记忆所有者 |
+| access_level | string | `owner_only` / `household` |
+| scope | JSON | 适用范围 |
+| environment_id | UUID FK nullable | 环境范围 |
+| space_id | UUID FK nullable | 空间范围 |
+| entity_id | UUID FK nullable | 实体范围 |
+| conversation_id | UUID FK nullable | 来源对话 |
+| task_id | UUID FK nullable | 来源任务 |
+| subject_type | string nullable | 语义主体类型 |
+| subject_id | string nullable | 语义主体 ID |
+| predicate | string nullable | 语义谓词 |
+| object_value | JSON nullable | 语义对象值 |
+| valid_from | timestamp | 生效开始时间 |
+| retention_until | timestamp nullable | 物理删除截止时间 |
+| superseded_by_id | UUID FK nullable | 替代记忆 |
+| last_reviewed_at | timestamp nullable | 最近确认、纠正或验证时间 |
+| correction_count | integer | 纠正次数 |
 | expires_at | timestamp nullable | 过期时间 |
 | created_at | timestamp | 创建时间 |
 | updated_at | timestamp | 更新时间 |
 
-### 16. `automations`
+约束和语义：
+
+- `memory_type` 仅允许 `episodic`、`semantic`、`procedural`。
+- Working Memory 不落新表；当前对话和环境状态继续复用现有短期上下文表和缓存。
+- `active` 或 `corrected` 是默认查询 `status=current` 时可用的当前记忆。
+- `source_type=ai_inference` 强制为 `candidate`、未确认、未验证且必须有 `expires_at`。
+- 只有 `source_type=user` 的记忆允许显式用户确认。
+- `procedural` 必须有 `subject_id`，并通过 procedure version 验证后才可检索。
+- `subject_type + subject_id + predicate` 用于语义冲突检查；同一键下不同
+  `object_value` 的当前记忆由服务拒绝或要求用户纠正。
+- 索引覆盖类型/状态、来源、环境/空间/实体、语义三元组、过期时间和保留时间。
+
+### 16. `memory_evidence`
+
+长期记忆的来源证据，不复制完整历史记录。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 证据 ID |
+| memory_id | UUID FK | 记忆 ID |
+| evidence_type | string | `observation` / `event` / `task` / `conversation` / `procedure_execution` / `user_statement` / `environment_snapshot` |
+| evidence_id | string nullable | 原始记录 ID；显式用户陈述可为空 |
+| source_type | string | 原始记录来源 |
+| source_record_id | string nullable | 上游来源记录 ID |
+| trust_level | float | 证据可信度，0 到 1 |
+| snapshot | JSON | 创建记忆时的最小脱敏快照 |
+| occurred_at | timestamp nullable | 原始事件时间 |
+| created_at | timestamp | 创建时间 |
+
+`procedure_execution` 指向 `tool_executions.id`；observation 指向
+`observations.observation_id`。Repository 在写入前验证引用存在。
+
+### 17. `memory_revisions`
+
+记忆生命周期审计与可追溯内容修订。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 修订 ID |
+| memory_id | UUID FK | 记忆 ID |
+| revision_type | string | `create` / `update` / `correct` / `confirm` / `expire` / `archive` / `validate` |
+| previous_content | text | 修订前内容 |
+| previous_summary | text nullable | 修订前摘要 |
+| changed_fields | JSON | 变更字段和值 |
+| actor_type | string | 用户、系统或验证者类型 |
+| actor_id | string | 操作者 ID |
+| reason | text nullable | 原因 |
+| created_at | timestamp | 修订时间 |
+
+### 18. `memory_consents`
+
+用户授权记录。偏好创建时生成 `preference_store` 授权；扩展功能可使用
+`memory_store` 和 `retrieval` 授权类型。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 授权 ID |
+| subject_id | string | 用户主体 ID |
+| grant_type | string | `memory_store` / `preference_store` / `retrieval` |
+| statement | text | 用户授权语句 |
+| scope | JSON | 授权范围 |
+| granted_at | timestamp | 授权时间 |
+| revoked_at | timestamp nullable | 撤销时间 |
+| expires_at | timestamp nullable | 授权过期时间 |
+| actor_type | string | 操作者类型 |
+
+### 19. `memory_procedure_versions`
+
+可复用流程的版本化定义。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 版本 ID |
+| memory_id | UUID FK | Procedural Memory ID |
+| version | string | 流程版本 |
+| steps | JSON | 已定义步骤 |
+| input_schema | JSON | 输入 Schema |
+| output_schema | JSON | 输出 Schema |
+| risk_level | string | 风险等级 |
+| status | string | `testing` / `validated` / `retired` |
+| required_successes | integer | 需要的成功验证数，必须大于 0 |
+| successful_validations | integer | 成功验证数 |
+| failed_validations | integer | 失败验证数 |
+| validated_at | timestamp nullable | 达标验证时间 |
+| retired_at | timestamp nullable | 退役时间 |
+| created_at | timestamp | 创建时间 |
+| updated_at | timestamp | 更新时间 |
+
+约束：`(memory_id, version)` 唯一。
+
+### 20. `memory_procedure_validations`
+
+流程验证记录。流程必须累计达到 `required_successes` 才会成为可检索技能；
+关联 task 或 tool execution 时保留验证来源。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 验证 ID |
+| procedure_version_id | UUID FK | 流程版本 ID |
+| task_id | UUID FK nullable | 验证任务 |
+| tool_execution_id | UUID FK nullable | 验证工具执行 |
+| status | string | `passed` / `failed` |
+| result | JSON | 验证结果 |
+| validator_type | string | 验证者类型 |
+| validated_at | timestamp | 验证时间 |
+
+### 21. `memory_access_logs`
+
+记忆和偏好的访问审计。当前 API 代码先显式删除目标相关的日志，再删除记忆或
+偏好；数据库 FK 为 `SET NULL`，用于兜底保持删除路径可完成。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | UUID PK | 审计 ID |
+| memory_id | UUID FK nullable | 记忆 ID |
+| preference_id | UUID FK nullable | 偏好 ID |
+| access_type | string | `create` / `read` / `retrieve` / `update` / `confirm` / `correct` / `delete` / `expire` |
+| actor_type | string | 操作者类型 |
+| actor_id | string | 操作者 ID |
+| authorized | boolean | 是否通过授权 |
+| query | JSON nullable | 脱敏查询或变更摘要 |
+| accessed_at | timestamp | 访问时间 |
+
+### 22. `automations`
 
 Arvuno 上下文自动化规则。普通定时、状态触发和场景自动化优先由 Home Assistant 提供，本表不做通用自动化平台模型。
 
@@ -322,7 +501,7 @@ Arvuno 上下文自动化规则。普通定时、状态触发和场景自动化�
 | created_at | timestamp | 创建时间 |
 | updated_at | timestamp | 更新时间 |
 
-### 17. `automation_runs`
+### 23. `automation_runs`
 
 自动化执行记录。
 
@@ -339,7 +518,7 @@ Arvuno 上下文自动化规则。普通定时、状态触发和场景自动化�
 | started_at | timestamp | 开始时间 |
 | completed_at | timestamp nullable | 完成时间 |
 
-### 18. `system_settings`
+### 24. `system_settings`
 
 系统配置。敏感信息只保存引用或本地加密值，不保存明文 API Key。
 
@@ -355,7 +534,7 @@ Arvuno 上下文自动化规则。普通定时、状态触发和场景自动化�
 
 API Key、Home Assistant Token 等优先从环境变量读取，数据库中只保存配置状态或脱敏摘要。
 
-### 19. `notifications`
+### 25. `notifications`
 
 通知记录。
 

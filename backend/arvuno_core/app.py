@@ -26,6 +26,15 @@ from arvuno_core.api.devices import router as devices_router
 from arvuno_core.api.environment import router as environment_router
 from arvuno_core.api.events import router as events_router
 from arvuno_core.api.health import router as health_router
+from arvuno_core.api.memory import (
+    preference_router as memory_preference_router,
+)
+from arvuno_core.api.memory import (
+    retrieval_router as memory_retrieval_router,
+)
+from arvuno_core.api.memory import (
+    router as memory_router,
+)
 from arvuno_core.api.observations import router as observations_router
 from arvuno_core.api.observations import source_router as observation_sources_router
 from arvuno_core.api.settings import router as settings_router
@@ -58,6 +67,7 @@ from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
 from arvuno_core.events.service import DeviceEventService
 from arvuno_core.logging_config import correlation_id_var
+from arvuno_core.memory.service import MemoryService
 from arvuno_core.observations.pipeline import ObservationPipeline
 from arvuno_core.observations.service import ObservationService
 from arvuno_core.persistence.database import DatabaseManager
@@ -297,6 +307,7 @@ def create_app(
         app.state.task_service,
         event_bus,
     )
+    app.state.memory_service = MemoryService(unit_of_work_factory)
     event_bus.subscribe(
         automation_service.handle_event,
         event_types={
@@ -372,7 +383,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=app_settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
     )
     app.include_router(health_router)
@@ -390,6 +401,9 @@ def create_app(
     app.include_router(agent_router)
     app.include_router(settings_router)
     app.include_router(automations_router)
+    app.include_router(memory_router)
+    app.include_router(memory_retrieval_router)
+    app.include_router(memory_preference_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:

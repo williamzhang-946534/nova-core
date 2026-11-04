@@ -6,6 +6,7 @@ import {
   DashboardOutlined,
   CommentOutlined,
   HomeOutlined,
+  DatabaseOutlined,
   UnorderedListOutlined,
   SettingOutlined,
   ThunderboltOutlined,
@@ -48,6 +49,11 @@ export default function AppLayout() {
               key: "/events",
               icon: <UnorderedListOutlined />,
               label: <Link to="/events">事件</Link>,
+            },
+            {
+              key: "/memory",
+              icon: <DatabaseOutlined />,
+              label: <Link to="/memory">记忆</Link>,
             },
             {
               key: "/chat",

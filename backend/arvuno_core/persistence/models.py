@@ -849,13 +849,44 @@ class UserPreference(Base):
     category: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(100))
+    source_type: Mapped[str] = mapped_column(String(50), default="user")
+    source_record_id: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(30), default="draft")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    conversation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    consent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memory_consents.id", ondelete="SET NULL")
+    )
     confirmed: Mapped[bool]
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
-    __table_args__ = (UniqueConstraint("key", name="uq_user_preferences_key"),)
+    __table_args__ = (
+        UniqueConstraint("key", name="uq_user_preferences_key"),
+        CheckConstraint(
+            "status IN ('draft', 'active', 'revoked')",
+            name="ck_user_preferences_status",
+        ),
+        CheckConstraint(
+            "(confirmed = 0 AND confirmed_at IS NULL) "
+            "OR (confirmed = 1 AND confirmed_at IS NOT NULL)",
+            name="ck_user_preferences_confirmation",
+        ),
+        CheckConstraint(
+            "source_type = 'user' AND source_record_id IS NOT NULL",
+            name="ck_user_preferences_user_source",
+        ),
+        Index("ix_user_preferences_status_key", "status", "key"),
+    )
 
 
 class Memory(Base):
@@ -871,6 +902,32 @@ class Memory(Base):
     source_type: Mapped[str] = mapped_column(String(100))
     source_id: Mapped[str | None] = mapped_column(String(255))
     user_confirmed: Mapped[bool]
+    status: Mapped[str] = mapped_column(String(30), default="active")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    verification_status: Mapped[str] = mapped_column(String(30), default="unverified")
+    owner_id: Mapped[str] = mapped_column(String(100), default="local_user")
+    access_level: Mapped[str] = mapped_column(String(30), default="owner_only")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    environment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("environments.id", ondelete="SET NULL")
+    )
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id", ondelete="SET NULL"))
+    entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id", ondelete="SET NULL"))
+    conversation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    subject_type: Mapped[str | None] = mapped_column(String(100))
+    subject_id: Mapped[str | None] = mapped_column(String(255))
+    predicate: Mapped[str | None] = mapped_column(String(255))
+    object_value: Mapped[Any | None] = mapped_column(JSON)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memories.id", ondelete="SET NULL")
+    )
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    correction_count: Mapped[int] = mapped_column(Integer, default=0)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
@@ -878,8 +935,228 @@ class Memory(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "memory_type IN ('episodic', 'semantic', 'procedural')",
+            name="ck_memories_type",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'candidate', 'corrected', 'superseded', 'expired', 'archived')",
+            name="ck_memories_status",
+        ),
+        CheckConstraint(
+            "verification_status IN ('unverified', 'verified', 'rejected')",
+            name="ck_memories_verification",
+        ),
+        CheckConstraint("importance BETWEEN 1 AND 5", name="ck_memories_importance"),
+        CheckConstraint(
+            "source_type != 'ai_inference' OR (status = 'candidate' AND user_confirmed = 0 "
+            "AND verification_status = 'unverified' AND expires_at IS NOT NULL)",
+            name="ck_memories_ai_inference_candidate",
+        ),
+        CheckConstraint(
+            "memory_type != 'procedural' OR subject_id IS NOT NULL",
+            name="ck_memories_procedure_subject",
+        ),
         Index("ix_memories_type_created", "memory_type", "created_at"),
         Index("ix_memories_source", "source_type", "source_id"),
+        Index("ix_memories_status_type", "status", "memory_type"),
+        Index("ix_memories_scope", "environment_id", "space_id", "entity_id"),
+        Index("ix_memories_subject_predicate", "subject_type", "subject_id", "predicate"),
+        Index("ix_memories_valid_until", "expires_at"),
+        Index("ix_memories_retention", "retention_until"),
+    )
+
+    evidence: Mapped[list["MemoryEvidence"]] = relationship(
+        back_populates="memory",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    revisions: Mapped[list["MemoryRevision"]] = relationship(
+        back_populates="memory",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class MemoryEvidence(Base):
+    __tablename__ = "memory_evidence"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    memory_id: Mapped[str] = mapped_column(
+        ForeignKey("memories.id", ondelete="CASCADE"),
+    )
+    evidence_type: Mapped[str] = mapped_column(String(50))
+    evidence_id: Mapped[str | None] = mapped_column(String(255))
+    source_type: Mapped[str] = mapped_column(String(100))
+    source_record_id: Mapped[str | None] = mapped_column(String(255))
+    trust_level: Mapped[float] = mapped_column(Float, default=0.5)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "evidence_type IN ('observation', 'event', 'task', 'conversation', "
+            "'procedure_execution', 'user_statement', 'environment_snapshot')",
+            name="ck_memory_evidence_type",
+        ),
+        CheckConstraint(
+            "evidence_type IN ('user_statement', 'ai_inference') OR evidence_id IS NOT NULL",
+            name="ck_memory_evidence_record",
+        ),
+        UniqueConstraint(
+            "memory_id",
+            "evidence_type",
+            "evidence_id",
+            name="uq_memory_evidence_record",
+        ),
+        Index("ix_memory_evidence_memory", "memory_id"),
+        Index("ix_memory_evidence_record", "evidence_type", "evidence_id"),
+    )
+
+    memory: Mapped[Memory] = relationship(back_populates="evidence")
+
+
+class MemoryRevision(Base):
+    __tablename__ = "memory_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    memory_id: Mapped[str] = mapped_column(
+        ForeignKey("memories.id", ondelete="CASCADE"),
+    )
+    revision_type: Mapped[str] = mapped_column(String(30))
+    previous_content: Mapped[str] = mapped_column(Text)
+    previous_summary: Mapped[str | None] = mapped_column(Text)
+    changed_fields: Mapped[dict[str, Any]] = mapped_column(JSON)
+    actor_type: Mapped[str] = mapped_column(String(50), default="user")
+    actor_id: Mapped[str] = mapped_column(String(100), default="local_user")
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "revision_type IN ('create', 'update', 'correct', 'confirm', "
+            "'expire', 'archive', 'validate')",
+            name="ck_memory_revisions_type",
+        ),
+        Index("ix_memory_revisions_memory_created", "memory_id", "created_at"),
+    )
+
+    memory: Mapped[Memory] = relationship(back_populates="revisions")
+
+
+class MemoryConsent(Base):
+    __tablename__ = "memory_consents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    subject_id: Mapped[str] = mapped_column(String(100), default="local_user")
+    grant_type: Mapped[str] = mapped_column(String(50))
+    statement: Mapped[str] = mapped_column(Text)
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    actor_type: Mapped[str] = mapped_column(String(50), default="user")
+
+    __table_args__ = (
+        CheckConstraint(
+            "grant_type IN ('memory_store', 'preference_store', 'retrieval')",
+            name="ck_memory_consents_grant_type",
+        ),
+        Index("ix_memory_consents_subject", "subject_id", "grant_type", "granted_at"),
+    )
+
+
+class MemoryProcedureVersion(Base):
+    __tablename__ = "memory_procedure_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    memory_id: Mapped[str] = mapped_column(
+        ForeignKey("memories.id", ondelete="CASCADE"),
+    )
+    version: Mapped[str] = mapped_column(String(50))
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    input_schema: Mapped[dict[str, Any]] = mapped_column(JSON)
+    output_schema: Mapped[dict[str, Any]] = mapped_column(JSON)
+    risk_level: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(30), default="testing")
+    required_successes: Mapped[int] = mapped_column(Integer, default=3)
+    successful_validations: Mapped[int] = mapped_column(Integer, default=0)
+    failed_validations: Mapped[int] = mapped_column(Integer, default=0)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("memory_id", "version", name="uq_memory_procedure_versions_version"),
+        CheckConstraint(
+            "status IN ('testing', 'validated', 'retired')",
+            name="ck_memory_procedure_versions_status",
+        ),
+        CheckConstraint("required_successes > 0", name="ck_memory_procedure_versions_required"),
+        Index("ix_memory_procedure_versions_memory_status", "memory_id", "status"),
+    )
+
+    memory: Mapped[Memory] = relationship()
+
+
+class MemoryProcedureValidation(Base):
+    __tablename__ = "memory_procedure_validations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    procedure_version_id: Mapped[str] = mapped_column(
+        ForeignKey("memory_procedure_versions.id", ondelete="CASCADE"),
+    )
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    tool_execution_id: Mapped[str | None] = mapped_column(
+        ForeignKey("tool_executions.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(30))
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    validator_type: Mapped[str] = mapped_column(String(50), default="user")
+    validated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('passed', 'failed')",
+            name="ck_memory_procedure_validations_status",
+        ),
+        Index("ix_memory_procedure_validations_version", "procedure_version_id", "validated_at"),
+    )
+
+
+class MemoryAccessLog(Base):
+    __tablename__ = "memory_access_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    memory_id: Mapped[str | None] = mapped_column(
+        ForeignKey("memories.id", ondelete="SET NULL"),
+    )
+    preference_id: Mapped[str | None] = mapped_column(
+        ForeignKey("user_preferences.id", ondelete="SET NULL"),
+    )
+    access_type: Mapped[str] = mapped_column(String(30))
+    actor_type: Mapped[str] = mapped_column(String(50), default="user")
+    actor_id: Mapped[str] = mapped_column(String(100), default="local_user")
+    authorized: Mapped[bool] = mapped_column(Boolean, default=True)
+    query: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    accessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "access_type IN ('create', 'read', 'retrieve', 'update', 'confirm', "
+            "'correct', 'delete', 'expire')",
+            name="ck_memory_access_logs_type",
+        ),
+        CheckConstraint(
+            "memory_id IS NOT NULL OR preference_id IS NOT NULL",
+            name="ck_memory_access_logs_target",
+        ),
+        Index("ix_memory_access_logs_memory", "memory_id", "accessed_at"),
+        Index("ix_memory_access_logs_preference", "preference_id", "accessed_at"),
     )
 
 

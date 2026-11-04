@@ -8,6 +8,7 @@ import DeviceDetailPage from "./pages/DeviceDetailPage";
 import DeviceListPage from "./pages/DeviceListPage";
 import EnvironmentPage from "./pages/EnvironmentPage";
 import EventsPage from "./pages/EventsPage";
+import MemoryPage from "./pages/MemoryPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SpacesPage from "./pages/SpacesPage";
 import SystemOverviewPage from "./pages/SystemOverviewPage";
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="spaces" element={<SpacesPage />} />
         <Route path="environment" element={<EnvironmentPage />} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="memory" element={<MemoryPage />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="tasks" element={<TaskListPage />} />
         <Route path="tasks/:taskId" element={<TaskDetailPage />} />

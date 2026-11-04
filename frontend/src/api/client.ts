@@ -44,7 +44,7 @@ function errorMessage(value: unknown, fallback: string): string {
 }
 
 export interface RequestJsonOptions {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
 }
 

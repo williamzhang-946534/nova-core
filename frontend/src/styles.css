@@ -291,6 +291,24 @@ body {
   margin-top: 16px;
 }
 
+.memory-retrieval {
+  display: grid;
+  grid-template-columns: 180px minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.memory-retrieval-result {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.memory-detail {
+  display: grid;
+  gap: 16px;
+}
+
 .number-input {
   width: 160px;
 }
@@ -324,6 +342,10 @@ body {
   }
 
   .chat-input {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-retrieval {
     grid-template-columns: 1fr;
   }
 
