@@ -9,6 +9,7 @@ from arvuno_core.persistence.automations import (
     NotificationRepository,
 )
 from arvuno_core.persistence.exceptions import RepositoryError
+from arvuno_core.persistence.history import HistoryRepository
 from arvuno_core.persistence.memory import MemoryRepository
 from arvuno_core.persistence.observations import (
     ObservationAttributeRepository,
@@ -64,6 +65,7 @@ class SqlAlchemyUnitOfWork:
         self.notifications: NotificationRepository | None = None
         self.state_estimates: StateEstimateRepository | None = None
         self.memories: MemoryRepository | None = None
+        self.history: HistoryRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -89,6 +91,7 @@ class SqlAlchemyUnitOfWork:
         self.notifications = NotificationRepository(self._session)
         self.state_estimates = StateEstimateRepository(self._session)
         self.memories = MemoryRepository(self._session)
+        self.history = HistoryRepository(self._session)
         return self
 
     def __exit__(
@@ -140,3 +143,5 @@ class SqlAlchemyUnitOfWork:
             self.notifications = None
             self.state_estimates = None
             self.memories = None
+            self.history = None
+        self.history = None

@@ -44,6 +44,11 @@ erDiagram
 `environment_snapshots` 或 `tool_executions`。SQLite 层不为多态引用建立物理外键；
 Memory Repository 在写入证据前验证目标记录存在，读取时关联原始记录。
 
+ARS-03.2 的 History 查询是只读应用层读模型，不新增历史表，也不复制上述数据。
+`HistoryRepository` 按时间、空间、实体、事件主体、任务和 correlation ID 组装
+`observations`、`events`、`tasks`、`environment_snapshots`、空间树和归属区间。
+快照差异只比较已保存的 `environment_snapshots.context`，原始记录仍留在各自表中。
+
 ## 表结构
 
 ### 1. `devices`

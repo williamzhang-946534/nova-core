@@ -454,7 +454,7 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 | --- | --- | --- |
 | `ARS-01` Core Execution | 已完成 | 对应仓库 Phase 10 完成状态 |
 | `ARS-02` Spatial Environmental Intelligence | ARS-02.7 最终验收已完成，结论为未完全通过；待修复 Context v2 缺陷并复验 | 设计见第 20 至 24 号文档；验收补充见第 25、26 号文档。Spatial Model、Observation Model、Observation Pipeline、State Estimation、空间查询 / AI 环境理解 / Web Console 已实现；Environment Context v2 空间状态投影存在阻塞缺陷 |
-| `ARS-03` World Memory | 待开发 | 依赖 ARS-02 验收 |
+| `ARS-03` World Memory | ARS-03.0 / 03.1 已实现，ARS-03.2 实现完成待验收 | Memory 分类、Service、检索和生命周期已按已确认设计实现；时间理解与只读历史查询已实现。整体阶段仍待用户验收，不关闭 |
 
 ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation Pipeline、State Estimation、Environment Context v2、迁移与 API 草案、隐私删除、SQLite 性能、测试策略和验收标准。用户确认设计后，先执行 `ARS-02.1 Spatial Model 工程实现`，不得直接跳到观测管线或状态估计。
 
@@ -471,3 +471,5 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 2026-11-04，`ARS-02.6 真实 ESPHome / ESP32 传感器验证` 的软件接口验收完成，真实硬件验收因当前没有 ESP32 和相关传感器而未执行。隔离空库通过 Alembic 升级，Mock Adapter 与 HA Demo 分别通过 Device Registry、Observation Pipeline、来源追踪、时间/单位/质量标记、State Estimation、Context v2、只读 Tool 和重启恢复验证；后端全量回归 228 项通过，Ruff lint 和格式检查通过。HA 写操作保持关闭并通过 Tool Executor 拒绝写操作验证。结果见 `docs/25-ars02-real-esphome-acceptance.md`。Mock 与 HA Demo 结果未替代真实 ESPHome / ESP32 验收。
 
 2026-11-04，`ARS-02.7 完整验收` 已完成并输出 `docs/26-ars02-final-acceptance-report.md`。后端全量回归 228 项通过，Ruff、前端类型检查 / 构建 / 格式检查、Alembic 空库升级和隔离环境重启恢复通过；Mock 与 HA Demo 链路、空间历史、观测来源、时间语义、状态估计、只读 Tool、安全链路和 Web Console 空 / 失败态完成检查。最终结论为**未完全通过**：Environment Context v2 未投影 18 条空间级状态估计，与当前状态读模型不一致；隐私删除端到端审计、目标规模 SQLite 压测、备份恢复演练、真实 ESPHome / ESP32 和真实 AI Provider 验收仍未执行或未完全执行。ARS-02 不得标记关闭，应先修复 Context v2 缺陷并按第 26 号报告复验后再进入 ARS-03。
+
+2026-11-04，`ARS-03.2 环境时间理解与历史关联` 工程实现完成，待用户验收。该子阶段在既有空间、实体、观测、事件、任务和环境快照上增加只读 History Repository、Service、Schema 和带认证的 History API；提供时间范围、空间后代、实体 / 设备、趋势、快照查询、有限快照差异、correlation 关联和四类确定性中文历史问答。SQLite 继续使用 naive UTC 存储，API 使用 aware 时间并按用户 IANA 时区展示；迟到、未来偏差、缺少采集时间和缺失区间显式暴露。快照差异只标注可由设备命令尝试恢复的投影候选，明确物理观测不能真正回滚。实现细节和测试边界见 [27-ars03-history-time-understanding.md](27-ars03-history-time-understanding.md)。本子阶段不自动写入 Memory，不引入向量数据库，不做通用自然语言理解，不开始 ARS-03.3。

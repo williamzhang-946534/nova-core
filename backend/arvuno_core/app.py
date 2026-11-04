@@ -26,6 +26,7 @@ from arvuno_core.api.devices import router as devices_router
 from arvuno_core.api.environment import router as environment_router
 from arvuno_core.api.events import router as events_router
 from arvuno_core.api.health import router as health_router
+from arvuno_core.api.history import router as history_router
 from arvuno_core.api.memory import (
     preference_router as memory_preference_router,
 )
@@ -66,6 +67,7 @@ from arvuno_core.estimation.service import StateEstimationService
 from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
 from arvuno_core.events.service import DeviceEventService
+from arvuno_core.history.service import HistoryService
 from arvuno_core.logging_config import correlation_id_var
 from arvuno_core.memory.service import MemoryService
 from arvuno_core.observations.pipeline import ObservationPipeline
@@ -308,6 +310,10 @@ def create_app(
         event_bus,
     )
     app.state.memory_service = MemoryService(unit_of_work_factory)
+    app.state.history_service = HistoryService(
+        unit_of_work_factory,
+        environment_name=app_settings.default_environment_name,
+    )
     event_bus.subscribe(
         automation_service.handle_event,
         event_types={
@@ -404,6 +410,7 @@ def create_app(
     app.include_router(memory_router)
     app.include_router(memory_retrieval_router)
     app.include_router(memory_preference_router)
+    app.include_router(history_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:
