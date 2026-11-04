@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -93,6 +93,7 @@ class MemoryRepository:
                     func.lower(Memory.title).like(needle),
                     func.lower(Memory.content).like(needle),
                     func.lower(Memory.summary).like(needle),
+                    func.lower(cast(Memory.keywords, String)).like(needle),
                     func.lower(Memory.subject_type).like(needle),
                     func.lower(Memory.subject_id).like(needle),
                     func.lower(Memory.predicate).like(needle),

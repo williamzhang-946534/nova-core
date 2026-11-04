@@ -1160,6 +1160,199 @@ class MemoryAccessLog(Base):
     )
 
 
+class ReasoningSession(Base):
+    __tablename__ = "reasoning_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    question: Mapped[str] = mapped_column(Text)
+    trigger: Mapped[str] = mapped_column(String(50), default="user")
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    diagnosis: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    analyzer_versions: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    actor_type: Mapped[str] = mapped_column(String(50), default="user")
+    actor_id: Mapped[str] = mapped_column(String(100), default="local_user")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="ck_reasoning_sessions_status",
+        ),
+        CheckConstraint(
+            "trigger IN ('user', 'system', 'automation')",
+            name="ck_reasoning_sessions_trigger",
+        ),
+        Index("ix_reasoning_sessions_environment_created", "environment_id", "created_at"),
+        Index("ix_reasoning_sessions_status_created", "status", "created_at"),
+    )
+
+    evidence_bundles: Mapped[list["EvidenceBundle"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", passive_deletes=True
+    )
+    hypotheses: Mapped[list["Hypothesis"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class EvidenceBundle(Base):
+    __tablename__ = "evidence_bundles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_sessions.id", ondelete="CASCADE"))
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100))
+    selection_basis: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    coverage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        Index("ix_evidence_bundles_session", "session_id"),
+        Index("ix_evidence_bundles_environment", "environment_id"),
+    )
+
+    session: Mapped[ReasoningSession] = relationship(back_populates="evidence_bundles")
+    items: Mapped[list["EvidenceItem"]] = relationship(
+        back_populates="bundle", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class EvidenceItem(Base):
+    __tablename__ = "evidence_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    bundle_id: Mapped[str] = mapped_column(ForeignKey("evidence_bundles.id", ondelete="CASCADE"))
+    source_type: Mapped[str] = mapped_column(String(50))
+    source_record_id: Mapped[str] = mapped_column(String(255))
+    classification: Mapped[str] = mapped_column(String(30))
+    statement: Mapped[str] = mapped_column(Text)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    source_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quality_status: Mapped[str] = mapped_column(String(30), default="valid")
+    quality_issues: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    trust_level: Mapped[float] = mapped_column(Float, default=0.5)
+    source_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('observation', 'state_estimate', 'event', 'task', 'memory')",
+            name="ck_evidence_items_source_type",
+        ),
+        CheckConstraint(
+            "classification IN ('observed', 'derived', 'inferred_candidate', "
+            "'verified_cause', 'unknown')",
+            name="ck_evidence_items_classification",
+        ),
+        CheckConstraint(
+            "quality_status IN ('valid', 'suspect', 'invalid', 'unavailable')",
+            name="ck_evidence_items_quality",
+        ),
+        CheckConstraint("trust_level BETWEEN 0 AND 1", name="ck_evidence_items_trust"),
+        UniqueConstraint(
+            "bundle_id", "source_type", "source_record_id", name="uq_evidence_items_source"
+        ),
+        Index("ix_evidence_items_bundle_class", "bundle_id", "classification"),
+        Index("ix_evidence_items_source", "source_type", "source_record_id"),
+    )
+
+    bundle: Mapped[EvidenceBundle] = relationship(back_populates="items")
+    hypothesis_links: Mapped[list["HypothesisEvidence"]] = relationship(
+        back_populates="evidence", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class Hypothesis(Base):
+    __tablename__ = "hypotheses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    session_id: Mapped[str] = mapped_column(ForeignKey("reasoning_sessions.id", ondelete="CASCADE"))
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    statement: Mapped[str] = mapped_column(Text)
+    hypothesis_type: Mapped[str] = mapped_column(String(50))
+    origin_type: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default="unsupported")
+    confidence_level: Mapped[str] = mapped_column(String(20), default="unknown")
+    causal_claim: Mapped[bool] = mapped_column(Boolean, default=False)
+    explanation: Mapped[str] = mapped_column(Text)
+    limitations: Mapped[list[str]] = mapped_column(JSON, default=list)
+    unknowns: Mapped[list[str]] = mapped_column(JSON, default=list)
+    rule_id: Mapped[str | None] = mapped_column(String(100))
+    rule_version: Mapped[str | None] = mapped_column(String(50))
+    superseded_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("hypotheses.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "hypothesis_type IN ('deterministic_rule', 'correlation', 'ai_candidate', "
+            "'verified_cause', 'data_quality', 'unknown')",
+            name="ck_hypotheses_type",
+        ),
+        CheckConstraint(
+            "origin_type IN ('rule', 'model', 'user', 'system')",
+            name="ck_hypotheses_origin",
+        ),
+        CheckConstraint(
+            "status IN ('unsupported', 'plausible', 'supported', 'conflicted', "
+            "'refuted', 'expired', 'superseded')",
+            name="ck_hypotheses_status",
+        ),
+        CheckConstraint(
+            "confidence_level IN ('unknown', 'low', 'medium', 'high')",
+            name="ck_hypotheses_confidence",
+        ),
+        CheckConstraint(
+            "origin_type != 'model' OR (status IN ('unsupported', 'plausible') "
+            "AND causal_claim = 0)",
+            name="ck_hypotheses_model_candidate",
+        ),
+        Index("ix_hypotheses_session_type", "session_id", "hypothesis_type"),
+        Index("ix_hypotheses_environment_status", "environment_id", "status"),
+    )
+
+    session: Mapped[ReasoningSession] = relationship(back_populates="hypotheses")
+    evidence_links: Mapped[list["HypothesisEvidence"]] = relationship(
+        back_populates="parent_hypothesis", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class HypothesisEvidence(Base):
+    __tablename__ = "hypothesis_evidence"
+
+    parent_hypothesis: Mapped[Hypothesis] = relationship(back_populates="evidence_links")
+    evidence: Mapped[EvidenceItem] = relationship(back_populates="hypothesis_links")
+
+    hypothesis_id: Mapped[str] = mapped_column(
+        ForeignKey("hypotheses.id", ondelete="CASCADE"), primary_key=True
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    relationship: Mapped[str] = mapped_column(String(30))
+    weight: Mapped[float] = mapped_column(Float, default=0.5)
+    rationale: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "relationship IN ('supports', 'contradicts', 'context')",
+            name="ck_hypothesis_evidence_relationship",
+        ),
+        CheckConstraint("weight BETWEEN 0 AND 1", name="ck_hypothesis_evidence_weight"),
+        Index("ix_hypothesis_evidence_evidence", "evidence_id"),
+    )
+
+
 class Automation(Base):
     __tablename__ = "automations"
 

@@ -9,6 +9,8 @@ class AgentIntentType(StrEnum):
     ENVIRONMENT_QUERY = "environment_query"
     DEVICE_QUERY = "device_query"
     EVENT_QUERY = "event_query"
+    MEMORY_QUERY = "memory_query"
+    HISTORY_QUERY = "history_query"
     DEVICE_CONTROL = "device_control"
     AUTOMATION_REQUEST = "automation_request"
     SMALL_TALK = "smalltalk"
@@ -166,6 +168,8 @@ _INTENT_TOOLS: dict[AgentIntentType, set[str]] = {
     AgentIntentType.ENVIRONMENT_QUERY: {"get_environment_state"},
     AgentIntentType.DEVICE_QUERY: {"list_devices", "get_device_state"},
     AgentIntentType.EVENT_QUERY: {"query_events"},
+    AgentIntentType.MEMORY_QUERY: {"retrieve_memory"},
+    AgentIntentType.HISTORY_QUERY: {"query_history"},
     AgentIntentType.DEVICE_CONTROL: {"control_device"},
     AgentIntentType.AUTOMATION_REQUEST: set(),
     AgentIntentType.SMALL_TALK: set(),

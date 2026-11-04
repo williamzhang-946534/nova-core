@@ -38,6 +38,7 @@ from arvuno_core.api.memory import (
 )
 from arvuno_core.api.observations import router as observations_router
 from arvuno_core.api.observations import source_router as observation_sources_router
+from arvuno_core.api.reasoning import router as reasoning_router
 from arvuno_core.api.settings import router as settings_router
 from arvuno_core.api.spaces import device_router as space_device_router
 from arvuno_core.api.spaces import router as spaces_router
@@ -76,11 +77,19 @@ from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.provider_logs import SqlProviderLogStore
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.reasoning.service import ReasoningService
+from arvuno_core.schemas.memory import MemoryRetrievalRequest
 from arvuno_core.spatial.service import SpatialService
 from arvuno_core.tasks.service import TaskService
 from arvuno_core.tools.catalog import RegistryToolCatalog
 from arvuno_core.tools.confirmation import ConfirmationService
 from arvuno_core.tools.executor import ToolExecutor
+from arvuno_core.tools.models import (
+    HistoryQueryInput,
+    HistoryQueryOperation,
+    HistoryQueryOutput,
+    MemoryRetrievalInput,
+)
 from arvuno_core.tools.registry import build_default_tool_registry
 from arvuno_core.tools.safety import SafetyPolicy
 
@@ -273,10 +282,157 @@ def create_app(
         },
         observation_pipeline,
     )
+    memory_service = MemoryService(unit_of_work_factory)
+    history_service = HistoryService(
+        unit_of_work_factory,
+        environment_name=app_settings.default_environment_name,
+    )
+    reasoning_service = ReasoningService(
+        unit_of_work_factory,
+        environment_name=app_settings.default_environment_name,
+    )
+    app.state.memory_service = memory_service
+    app.state.history_service = history_service
+    app.state.reasoning_service = reasoning_service
+
+    async def retrieve_memory(request: MemoryRetrievalInput):
+        return await memory_service.retrieve(
+            MemoryRetrievalRequest(
+                question_type=request.question_type,
+                query=request.query,
+            )
+        )
+
+    async def query_history(request: HistoryQueryInput) -> HistoryQueryOutput:
+        result: HistoryQueryOutput
+        if request.operation is HistoryQueryOperation.ASK:
+            assert request.query is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                natural_history=await history_service.ask(
+                    request.query,
+                    timezone=request.timezone,
+                    now=request.now,
+                ),
+            )
+        elif request.operation is HistoryQueryOperation.TIME_RANGE:
+            assert request.start_time is not None
+            assert request.end_time is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                time_range=await history_service.time_range(
+                    start_time=request.start_time,
+                    end_time=request.end_time,
+                    timezone=request.timezone,
+                    entity_id=request.entity_id,
+                    space_id=request.space_id,
+                    include_descendants=request.include_descendants,
+                    attribute=request.attribute,
+                    quality_status=request.quality_status,
+                    expected_interval_seconds=request.expected_interval_seconds,
+                    limit=request.limit,
+                ),
+            )
+        elif request.operation is HistoryQueryOperation.SPATIAL_HISTORY:
+            assert request.space_id is not None
+            assert request.start_time is not None
+            assert request.end_time is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                spatial_history=await history_service.spatial_history(
+                    request.space_id,
+                    start_time=request.start_time,
+                    end_time=request.end_time,
+                    timezone=request.timezone,
+                    include_descendants=request.include_descendants,
+                    attribute=request.attribute,
+                    expected_interval_seconds=request.expected_interval_seconds,
+                    limit=request.limit,
+                ),
+            )
+        elif request.operation is HistoryQueryOperation.ENTITY_HISTORY:
+            assert request.entity_id is not None
+            assert request.start_time is not None
+            assert request.end_time is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                entity_history=await history_service.entity_history(
+                    request.entity_id,
+                    start_time=request.start_time,
+                    end_time=request.end_time,
+                    timezone=request.timezone,
+                    attribute=request.attribute,
+                    expected_interval_seconds=request.expected_interval_seconds,
+                    limit=request.limit,
+                ),
+            )
+        elif request.operation is HistoryQueryOperation.TRENDS:
+            assert request.attribute is not None
+            assert request.start_time is not None
+            assert request.end_time is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                trends=await history_service.trends(
+                    start_time=request.start_time,
+                    end_time=request.end_time,
+                    attribute=request.attribute,
+                    timezone=request.timezone,
+                    group_by=request.group_by,
+                    space_id=request.space_id,
+                    entity_id=request.entity_id,
+                    include_descendants=request.include_descendants,
+                    limit=request.limit,
+                ),
+            )
+        elif request.operation is HistoryQueryOperation.SNAPSHOT_AT:
+            assert request.at_time is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                snapshot=await history_service.snapshot_at(
+                    at_time=request.at_time,
+                    timezone=request.timezone,
+                    environment_id=request.environment_id,
+                    nearest=request.nearest,
+                ),
+            )
+        elif request.operation is HistoryQueryOperation.SNAPSHOT_DIFF:
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                snapshot_diff=await history_service.snapshot_diff(
+                    baseline_id=request.baseline_id,
+                    target_id=request.target_id,
+                    baseline_at=request.baseline_at,
+                    target_at=request.target_at,
+                    timezone=request.timezone,
+                ),
+            )
+        else:
+            assert request.record_type is not None
+            assert request.record_id is not None
+            result = HistoryQueryOutput(
+                service_available=True,
+                operation=request.operation,
+                correlation=await history_service.correlate(
+                    record_type=request.record_type,
+                    record_id=request.record_id,
+                    timezone=request.timezone,
+                ),
+            )
+        return result
+
     tool_registry = build_default_tool_registry(
         device_service,
         environment_query_provider=environment_query_service.query,
         environment_state_sink=environment_context,
+        memory_retrieval_provider=retrieve_memory,
+        history_query_provider=query_history,
     )
     tool_executor = ToolExecutor(
         registry=tool_registry,
@@ -308,11 +464,6 @@ def create_app(
         unit_of_work_factory,
         app.state.task_service,
         event_bus,
-    )
-    app.state.memory_service = MemoryService(unit_of_work_factory)
-    app.state.history_service = HistoryService(
-        unit_of_work_factory,
-        environment_name=app_settings.default_environment_name,
     )
     event_bus.subscribe(
         automation_service.handle_event,
@@ -411,6 +562,7 @@ def create_app(
     app.include_router(memory_retrieval_router)
     app.include_router(memory_preference_router)
     app.include_router(history_router)
+    app.include_router(reasoning_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:

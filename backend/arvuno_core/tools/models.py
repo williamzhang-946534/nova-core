@@ -3,9 +3,20 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from arvuno_core.devices.models import DeviceActionName, DeviceStateName
+from arvuno_core.history.models import (
+    CorrelatedHistory,
+    EntityHistoryResult,
+    HistoryQueryResult,
+    NaturalHistoryAnswer,
+    SnapshotDiffResult,
+    SnapshotLookupResult,
+    SpatialHistoryResult,
+    TrendQueryResult,
+)
+from arvuno_core.memory.models import MemoryView, PreferenceView, QuestionType
 
 
 class ToolRiskLevel(StrEnum):
@@ -170,3 +181,109 @@ class ToolExecutionResult(BaseModel):
     permission_result: PermissionResult
     error: ToolErrorDetail | None = None
     correlation_id: str
+
+
+class MemoryRetrievalInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question_type: QuestionType = "any"
+    query: str | None = Field(default=None, max_length=500)
+
+
+class MemoryRetrievalOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    service_available: bool
+    question_type: QuestionType
+    query: str | None = None
+    memories: list[MemoryView] = Field(default_factory=list)
+    preferences: list[PreferenceView] = Field(default_factory=list)
+    source_references: list[dict[str, Any]] = Field(default_factory=list)
+    retrieved_at: datetime | None = None
+
+
+class HistoryQueryOperation(StrEnum):
+    ASK = "ask"
+    TIME_RANGE = "time_range"
+    SPATIAL_HISTORY = "spatial_history"
+    ENTITY_HISTORY = "entity_history"
+    TRENDS = "trends"
+    SNAPSHOT_AT = "snapshot_at"
+    SNAPSHOT_DIFF = "snapshot_diff"
+    CORRELATE = "correlate"
+
+
+class HistoryQueryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation: HistoryQueryOperation
+    query: str | None = Field(default=None, min_length=1, max_length=500)
+    start_time: AwareDatetime | None = None
+    end_time: AwareDatetime | None = None
+    at_time: AwareDatetime | None = None
+    timezone: str = Field(default="Asia/Shanghai", min_length=1, max_length=100)
+    now: AwareDatetime | None = None
+    entity_id: str | None = Field(default=None, min_length=1, max_length=36)
+    space_id: str | None = Field(default=None, min_length=1, max_length=36)
+    attribute: str | None = Field(default=None, min_length=1, max_length=50)
+    quality_status: str | None = Field(default=None, min_length=1, max_length=50)
+    include_descendants: bool = True
+    expected_interval_seconds: int | None = Field(default=None, ge=1)
+    limit: int = Field(default=200, ge=1, le=2000)
+    group_by: str = Field(default="space", pattern="^(space|entity)$")
+    environment_id: str | None = Field(default=None, min_length=1, max_length=36)
+    nearest: bool = False
+    baseline_id: str | None = Field(default=None, min_length=1, max_length=36)
+    target_id: str | None = Field(default=None, min_length=1, max_length=36)
+    baseline_at: AwareDatetime | None = None
+    target_at: AwareDatetime | None = None
+    record_type: str | None = Field(default=None, pattern="^(observation|event|task)$")
+    record_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+    @model_validator(mode="after")
+    def validate_operation_fields(self) -> "HistoryQueryInput":
+        if self.operation is HistoryQueryOperation.ASK:
+            if self.query is None:
+                raise ValueError("ask requires query")
+        elif self.operation is HistoryQueryOperation.TIME_RANGE:
+            if self.start_time is None or self.end_time is None:
+                raise ValueError("time_range requires start_time and end_time")
+        elif self.operation is HistoryQueryOperation.SPATIAL_HISTORY:
+            if self.space_id is None or self.start_time is None or self.end_time is None:
+                raise ValueError("spatial_history requires space_id and a time range")
+        elif self.operation is HistoryQueryOperation.ENTITY_HISTORY:
+            if self.entity_id is None or self.start_time is None or self.end_time is None:
+                raise ValueError("entity_history requires entity_id and a time range")
+        elif self.operation is HistoryQueryOperation.TRENDS:
+            if self.attribute is None or self.start_time is None or self.end_time is None:
+                raise ValueError("trends requires attribute and a time range")
+        elif self.operation is HistoryQueryOperation.SNAPSHOT_AT:
+            if self.at_time is None:
+                raise ValueError("snapshot_at requires at_time")
+        elif self.operation is HistoryQueryOperation.SNAPSHOT_DIFF:
+            if (self.baseline_id is None) == (self.baseline_at is None) or (
+                self.target_id is None
+            ) == (self.target_at is None):
+                raise ValueError(
+                    "snapshot_diff requires one baseline selector and one target selector"
+                )
+        elif self.operation is HistoryQueryOperation.CORRELATE and (
+            self.record_type is None or self.record_id is None
+        ):
+            raise ValueError("correlate requires record_type and record_id")
+        return self
+
+
+class HistoryQueryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    service_available: bool
+    operation: HistoryQueryOperation
+    time_range: HistoryQueryResult | None = None
+    spatial_history: SpatialHistoryResult | None = None
+    entity_history: EntityHistoryResult | None = None
+    trends: TrendQueryResult | None = None
+    snapshot: SnapshotLookupResult | None = None
+    snapshot_diff: SnapshotDiffResult | None = None
+    correlation: CorrelatedHistory | None = None
+    natural_history: NaturalHistoryAnswer | None = None

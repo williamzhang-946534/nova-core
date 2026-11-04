@@ -453,8 +453,9 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 | 长期阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | `ARS-01` Core Execution | 已完成 | 对应仓库 Phase 10 完成状态 |
-| `ARS-02` Spatial Environmental Intelligence | ARS-02.7 最终验收已完成，结论为未完全通过；待修复 Context v2 缺陷并复验 | 设计见第 20 至 24 号文档；验收补充见第 25、26 号文档。Spatial Model、Observation Model、Observation Pipeline、State Estimation、空间查询 / AI 环境理解 / Web Console 已实现；Environment Context v2 空间状态投影存在阻塞缺陷 |
-| `ARS-03` World Memory | ARS-03.0 / 03.1 已实现，ARS-03.2 实现完成待验收 | Memory 分类、Service、检索和生命周期已按已确认设计实现；时间理解与只读历史查询已实现。整体阶段仍待用户验收，不关闭 |
+| `ARS-02` Spatial Environmental Intelligence | ARS-02.7 最终验收保持未完全通过；D1 Context v2 缺陷已修复并复验 | 设计见第 20 至 24 号文档；验收补充见第 25、26 号文档。Spatial Model、Observation Model、Observation Pipeline、State Estimation、空间查询 / AI 环境理解 / Web Console 已实现；Context v2 空间状态投影已与当前读模型一致。隐私删除端到端、目标规模压测、备份恢复、真实 ESPHome / ESP32 和真实 AI Provider 仍未完成验收 |
+| `ARS-03` World Memory | ARS-03 验收部分通过 / 未完全关闭 | Memory 分类、Service、检索、生命周期、用户偏好、时间理解、只读历史查询和 Agent 只读工具入口已实现并通过回归；语义检索、自动压缩、记忆图谱、多用户隔离和真实程序执行验收链路未实现。结果见第 28 号报告 |
+| `ARS-04` World Reasoning & Orchestration | ARS-04.1 工程实现完成，待验收 | Reasoning、Evidence、Hypothesis、Goal、Plan、Replanning、Proactive Intelligence、Active Perception、授权边界、API 草案和测试方案见第 29 号文档；ARS-04.1 已实现确定性 Evidence-based Reasoning Engine、证据 / 假设持久化、来源追溯、诊断 API 和迁移，真实 AI 候选生成与 ARS-04.2 后续编排能力未实现 |
 
 ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation Pipeline、State Estimation、Environment Context v2、迁移与 API 草案、隐私删除、SQLite 性能、测试策略和验收标准。用户确认设计后，先执行 `ARS-02.1 Spatial Model 工程实现`，不得直接跳到观测管线或状态估计。
 
@@ -472,4 +473,14 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 
 2026-11-04，`ARS-02.7 完整验收` 已完成并输出 `docs/26-ars02-final-acceptance-report.md`。后端全量回归 228 项通过，Ruff、前端类型检查 / 构建 / 格式检查、Alembic 空库升级和隔离环境重启恢复通过；Mock 与 HA Demo 链路、空间历史、观测来源、时间语义、状态估计、只读 Tool、安全链路和 Web Console 空 / 失败态完成检查。最终结论为**未完全通过**：Environment Context v2 未投影 18 条空间级状态估计，与当前状态读模型不一致；隐私删除端到端审计、目标规模 SQLite 压测、备份恢复演练、真实 ESPHome / ESP32 和真实 AI Provider 验收仍未执行或未完全执行。ARS-02 不得标记关闭，应先修复 Context v2 缺陷并按第 26 号报告复验后再进入 ARS-03。
 
+2026-11-04，ARS-02 D1 `Environment Context v2 空间状态投影缺失` 已修复并复验。根因是 Context v2 状态索引与空间 / 实体读取使用了不一致的 target key；修复统一为二元 key，未改变 State Estimation 语义。新增测试覆盖 root / floor / room / zone 投影、冲突 / stale / unavailable / unknown、即时 Context 与 Snapshot 一致、API 与只读 Tool 一致、重启恢复、状态更新、空间迁移和重复重建幂等。后端全量回归 258 项通过，Ruff lint 和格式检查通过。D1 不再阻塞 Memory 等上层能力，但 D2-D8 仍未完成，ARS-02 不关闭。
+
 2026-11-04，`ARS-03.2 环境时间理解与历史关联` 工程实现完成，待用户验收。该子阶段在既有空间、实体、观测、事件、任务和环境快照上增加只读 History Repository、Service、Schema 和带认证的 History API；提供时间范围、空间后代、实体 / 设备、趋势、快照查询、有限快照差异、correlation 关联和四类确定性中文历史问答。SQLite 继续使用 naive UTC 存储，API 使用 aware 时间并按用户 IANA 时区展示；迟到、未来偏差、缺少采集时间和缺失区间显式暴露。快照差异只标注可由设备命令尝试恢复的投影候选，明确物理观测不能真正回滚。实现细节和测试边界见 [27-ars03-history-time-understanding.md](27-ars03-history-time-understanding.md)。本子阶段不自动写入 Memory，不引入向量数据库，不做通用自然语言理解，不开始 ARS-03.3。
+
+2026-11-04，`ARS-03 World Memory` 验收完成并输出 `docs/28-ars03-acceptance-report.md`。后端全量回归 255 项通过，Ruff、前端类型检查 / 构建 / 格式检查和 Alembic head `d41d8acd98a0` 检查通过；五类记忆职责、来源追踪、事实与推断分离、用户偏好管理、过期清理、真实删除、时间查询、空间 / 设备历史、趋势、快照差异、事件 / 任务关联和确定性历史问答通过隔离测试。最终结论为**部分通过 / 未完全通过**：Agent Runtime 未接入 Memory retrieval 和 History API，语义检索、自动压缩、长期知识提炼、记忆图谱、多用户隔离、真实工具执行产生程序验证、目标规模压测、生产备份恢复演练和真实 AI Provider 验收未完成。ARS-02 Context v2 空间级状态投影缺陷继续作为遗留阻塞项，ARS-03 不关闭。
+
+2026-11-04，Agent 已通过 `retrieve_memory` 和 `query_history` 两个只读工具接入 `MemoryService` 与 `HistoryService`。工具入口不暴露 Repository、SQLAlchemy 或内部 HTTP 调用；Memory Retrieval 覆盖偏好、稳定事实、历史事件、任务记录和已验证程序，History Query 覆盖时间、空间、实体、趋势、快照、差异和关联查询。检索结果携带原始来源引用，缺失区间显式返回；关键词检索现在同时匹配 `memories.keywords`。新增工具边界、权限、Agent 意图、服务委托和应用集成测试。后端全量回归 273 项通过，Ruff lint 和格式检查通过。语义检索、自动压缩、长期知识提炼、记忆图谱、多用户隔离和真实程序验证链路仍未实现，ARS-03 继续保持不关闭。
+
+2026-11-04，`ARS-04.0 World Reasoning & Orchestration` 架构设计完成并输出 `docs/29-ars04-world-reasoning-orchestration-design.md`，当前状态为等待用户确认。设计冻结 Reasoning / Planning / Task System / Tool Executor / Proactive Intelligence / Active Perception 的职责边界，定义 Evidence、Hypothesis、Goal、Plan、Replanning、Proactive Suggestion 和 Observation Request 数据契约，并给出 API、授权、隐私、测试和实施切分。该记录不表示数据模型、迁移、Service、API、Agent 集成或任何 ARS-04 工程能力已经实现。
+
+2026-11-04，`ARS-04.1 Evidence-based Reasoning Engine` 工程实现完成，待用户验收。该子阶段新增 Reasoning Session、Evidence Bundle / Item、Hypothesis 与证据关系表及 Alembic 迁移；Reasoning Service 可读取 World Model 当前估计、Observation、环境事件、任务与 Memory，生成结构化 Evidence Bundle、确定性规则结论、非因果时间相关性、显式验证原因、数据质量和未知信息，并持久化诊断记录。API 支持诊断、会话、证据、假设和原始来源查询；推理过程不修改 World Model observed 状态，不把模型结论写成事实或 Memory。历史回放、已验证原因、错误数据、来源追溯和 World Model 不可变性已覆盖测试。后端全量回归 278 项通过，Ruff 与 Alembic head 检查通过。AI 候选生成器保持 `not_configured`；Goal、Plan、Replanning、Proactive Intelligence、Active Perception、工具执行和设备控制未实现。

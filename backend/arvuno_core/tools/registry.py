@@ -12,13 +12,18 @@ from arvuno_core.environment.query_models import (
     EnvironmentQueryResult,
     EnvironmentStateQueryInput,
 )
+from arvuno_core.memory.models import MemoryRetrievalResult
 from arvuno_core.tools.models import (
     ControlDeviceInput,
     ControlDeviceOutput,
     GetDeviceStateInput,
     GetDeviceStateOutput,
+    HistoryQueryInput,
+    HistoryQueryOutput,
     ListDevicesInput,
     ListDevicesOutput,
+    MemoryRetrievalInput,
+    MemoryRetrievalOutput,
     ToolExecutionContext,
     ToolPermission,
     ToolRiskLevel,
@@ -91,6 +96,10 @@ def build_default_tool_registry(
     ]
     | None = None,
     environment_state_sink: EnvironmentStateSink | None = None,
+    memory_retrieval_provider: Callable[[MemoryRetrievalInput], Awaitable[MemoryRetrievalResult]]
+    | None = None,
+    history_query_provider: Callable[[HistoryQueryInput], Awaitable[HistoryQueryOutput]]
+    | None = None,
 ) -> ToolRegistry:
     async def list_devices(
         _context: ToolExecutionContext,
@@ -138,6 +147,40 @@ def build_default_tool_registry(
                 generated_at=datetime.now(UTC),
             )
         return await environment_query_provider(raw_input)
+
+    async def retrieve_memory(
+        _context: ToolExecutionContext,
+        raw_input: MemoryRetrievalInput,
+    ) -> MemoryRetrievalOutput:
+        if memory_retrieval_provider is None:
+            return MemoryRetrievalOutput(
+                service_available=False,
+                question_type=raw_input.question_type,
+                query=raw_input.query,
+            )
+        result = await memory_retrieval_provider(raw_input)
+        return MemoryRetrievalOutput(
+            service_available=True,
+            question_type=result.question_type,
+            query=result.query,
+            memories=result.memories,
+            preferences=result.preferences,
+            source_references=[
+                evidence.model_dump(mode="json") for evidence in result.source_references
+            ],
+            retrieved_at=result.retrieved_at,
+        )
+
+    async def query_history(
+        _context: ToolExecutionContext,
+        raw_input: HistoryQueryInput,
+    ) -> HistoryQueryOutput:
+        if history_query_provider is None:
+            return HistoryQueryOutput(
+                service_available=False,
+                operation=raw_input.operation,
+            )
+        return await history_query_provider(raw_input)
 
     async def control_device(
         _context: ToolExecutionContext,
@@ -201,6 +244,36 @@ def build_default_tool_registry(
             input_type=EnvironmentStateQueryInput,
             output_type=EnvironmentQueryResult,
             handler=get_environment_state,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="retrieve_memory",
+            version="1.0.0",
+            description="Retrieve preferences, stable facts, memories, and validated procedures.",
+            category="memory_query",
+            risk_level=ToolRiskLevel.READ_ONLY,
+            default_permission=ToolPermission.ALLOW,
+            requires_confirmation=False,
+            enabled=True,
+            input_type=MemoryRetrievalInput,
+            output_type=MemoryRetrievalOutput,
+            handler=retrieve_memory,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="query_history",
+            version="1.0.0",
+            description="Read observations, events, tasks, trends, snapshots, diffs, correlations.",
+            category="history_query",
+            risk_level=ToolRiskLevel.READ_ONLY,
+            default_permission=ToolPermission.ALLOW,
+            requires_confirmation=False,
+            enabled=True,
+            input_type=HistoryQueryInput,
+            output_type=HistoryQueryOutput,
+            handler=query_history,
         )
     )
     registry.register(

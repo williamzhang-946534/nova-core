@@ -210,6 +210,8 @@ def test_agent_runtime_submits_only_validated_candidates_to_task_system() -> Non
     assert {tool["name"] for tool in prompt_tools} == {
         "list_devices",
         "get_environment_state",
+        "retrieve_memory",
+        "query_history",
         "get_device_state",
         "control_device",
     }

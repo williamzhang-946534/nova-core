@@ -238,6 +238,8 @@ def test_tools_api_requires_auth_and_executes_mock_tool(tmp_path: Path) -> None:
         assert [item["name"] for item in catalog.json()["data"]] == [
             "list_devices",
             "get_environment_state",
+            "retrieve_memory",
+            "query_history",
             "get_device_state",
             "control_device",
         ]

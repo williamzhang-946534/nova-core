@@ -16,6 +16,7 @@ from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from arvuno_core.spatial.errors import SpaceNotFoundError
 
 UnitOfWorkFactory = Callable[[], SqlAlchemyUnitOfWork]
+StateKey = tuple[str, str]
 
 
 class EnvironmentContextV2Service:
@@ -106,7 +107,7 @@ def _space_node(
     space: SpaceLayout,
     states: dict[str, StateEstimateView],
     entities: list[EntityLayout],
-    states_by_target: dict[tuple[str, str, str], dict[str, StateEstimateView]],
+    states_by_target: dict[StateKey, dict[str, StateEstimateView]],
 ) -> SpaceContextV2:
     entity_nodes = [
         EntityContextV2(
@@ -115,7 +116,7 @@ def _space_node(
             entity_type=entity.entity_type,
             device_id=entity.device_id,
             space_id=entity.space_id,
-            states=states_by_target.get(("entity", entity.entity_id, ""), {}),
+            states=states_by_target.get(("entity", entity.entity_id), {}),
         )
         for entity in entities
     ]
@@ -133,15 +134,15 @@ def _space_node(
 
 def _states_by_target(
     states: list[StateEstimateView],
-) -> dict[tuple[str, str, str], dict[str, StateEstimateView]]:
-    result: dict[tuple[str, str, str], dict[str, StateEstimateView]] = {}
+) -> dict[StateKey, dict[str, StateEstimateView]]:
+    result: dict[StateKey, dict[str, StateEstimateView]] = {}
     for state in states:
         if state.target_type == "entity":
-            key = ("entity", state.entity_id or "", "")
+            key = ("entity", state.entity_id or "")
         elif state.target_type == "space":
-            key = ("space", state.space_id or "", "")
+            key = ("space", state.space_id or "")
         else:
-            key = ("environment", "", "")
+            key = ("environment", "")
         result.setdefault(key, {})[state.attribute] = state
     return result
 

@@ -834,10 +834,14 @@ Observation History 是现实数据记录，Memory 是经过筛选和组织的�
 - Observation History 负责保存可追溯观测。
 - Event History 负责保存重要事件。
 - Task History 负责保存任务执行过程。
+
+
 - Memory 负责形成有价值的长期知识。
 - Conversation History 负责保存对话过程。
 
 不能将这些表重复保存同一份信息而不明确职责。
+
+
 
 ### 三、记忆生命周期
 
@@ -927,6 +931,8 @@ AI 推断不得自动成为永久事实。
 3. 设备历史查询。
 4. 环境快照。
 5. 快照差异。
+
+
 6. 趋势统计。
 7. 历史事件关联。
 8. 任务与环境变化关联。

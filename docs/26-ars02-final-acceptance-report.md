@@ -6,6 +6,7 @@
 - 验收范围：ARS-02.1 至 ARS-02.7 的 Spatial Environmental Intelligence 实现
 - 最终结论：**未完全通过；软件主体条件可用，ARS-02 不应关闭**
 - 阻塞原因：Environment Context v2 未投影空间级状态估计，导致 Context 与 State Estimation 不一致
+- 修复复验：2026-11-04，D1 空间状态投影缺陷已修复并通过 258 项后端回归；其他验收缺口仍在，ARS-02 仍不关闭
 
 ## 1. Executive Summary
 
@@ -20,6 +21,8 @@ ARS-02 的核心工程链路已经形成：空间层级、实体与设备映射�
 5. **真实 AI Provider 自然语言会话未执行**：隔离进程实际使用 mock provider；确定性环境查询 Tool 路径通过，但真实模型生成质量未验收。
 
 因此本报告采用“软件主体条件可用，最终验收未完全通过”的口径。ARS-02.7 之后应先修复 Context v2 缺陷并复验，再补齐或显式降级处理隐私、性能、真实硬件和真实 AI Provider 事项。
+
+D1 已在后续修复中处理并复验。隐私删除闭环、目标规模性能、真实 ESPHome / ESP32 和真实 AI Provider 仍是未完成验收项，因此最终结论保持**未完全通过**。
 
 ## 2. Acceptance Environment
 
@@ -60,8 +63,8 @@ Alembic 空库完整升级到当前 head 通过。本验收涉及的关键迁移
 | Observation Schema | 通过 | 来源、主体、空间、raw / normalized、时间、质量、有效期、幂等键和外部 ID 语义完整 |
 | Observation Pipeline | 通过 | HA / Mock 统一输入，完成校验、标准化、时间处理、去重、采样和质量标记 |
 | State Estimation | 通过 | 七状态、输入观测、规则版本、生成时间、有效期和冲突候选可追溯 |
-| Environment Context v2 | **失败** | 空间级状态估计未进入 Context 投影 |
-| 空间 API 与只读 Tool | 条件通过 | API 与 Tool Registry 路径通过，但返回的 Context 数据受上述缺陷影响 |
+| Environment Context v2 | **原始失败；修复复验通过** | 验收时空间级状态估计未进入 Context 投影；D1 修复后即时投影、快照、API 和 Tool 已与当前读模型一致 |
+| 空间 API 与只读 Tool | 通过 | API 与 Tool Registry 返回同一批当前状态 ID；Context 完整性受原始缺陷影响的问题已消除 |
 | AI 自然语言环境查询 | 条件通过 | 确定性 Tool 查询与证据引用通过；真实 AI Provider 会话未执行 |
 | Web Console | 条件通过 | 页面、空态、失败态和证据展示通过；空间状态完整性受 Context 缺陷影响 |
 | 隐私与数据保留 | 未完全通过 | 策略、范围、raw 控制和清理已有；完整删除审计未验收 |
@@ -297,6 +300,26 @@ Home Assistant Demo：
 6. 冲突、过期、不可用和未知不被过滤。
 7. API、只读 Tool 和前端显示同一结果。
 
+### 8.4 Repair And Re-test Result
+
+修复日期：2026-11-04。修复只调整 Context v2 的目标状态索引，不改变 State Estimation 语义。
+
+实现结果：
+
+1. `_states_by_target` 与空间 / 实体读取统一使用二元 target key。
+2. root、floor、room、zone 四层空间级状态均进入 Context。
+3. 冲突、过期、不可用和未知状态不被投影过滤；`conflict` 的展示优先级高于 `stale`。
+4. Context quality 从完整投影状态集合计算。
+5. Snapshot v2、即时 Context、`/api/environment/context-v2` 和 `get_environment_state` Tool 返回同一批状态 ID。
+6. `DatabaseManager` dispose 后重启、重复 `StateEstimationService.rebuild`、温度状态更新和实体空间迁移后，Context 与当前读模型保持一致。
+
+验证结果：
+
+1. 新增 `tests/test_environment_context_v2_consistency.py` 3 项测试通过。
+2. 后端全量回归 `258 passed`，保留 1 个既有 Starlette TestClient deprecation warning。
+3. Ruff lint 和 format check 通过。
+4. 本次修复复验未替代 D3-D8 中的隐私、性能、备份、真实硬件或真实 AI Provider 验收。
+
 ## 9. API, Tool, AI And Web Console
 
 ### 9.1 APIs
@@ -453,7 +476,7 @@ ARS-01 的 191 个测试基线没有作为固定数字强行比较；当前代�
 
 | 编号 | 风险 / 缺口 | 等级 | 处理要求 |
 | --- | --- | --- | --- |
-| D1 | Context v2 空间状态投影缺失 | 阻塞 | 修复 key 不一致并复验 API / Tool / Console / Snapshot |
+| D1 | Context v2 空间状态投影缺失 | 已修复 | 2026-11-04 修复 key 不一致，并通过即时投影、快照、API、Tool、重启、状态更新、空间迁移和重复重建复验 |
 | D2 | 不同 `assignment_type` 的重复归属可能同时保留 open interval，导致重复 Context entity 或证据候选 | 高 | 明确唯一当前归属约束或查询收敛规则 |
 | D3 | 隐私删除端到端审计未完成 | 高 | 补删除任务、衍生副本、日志和备份边界验收 |
 | D4 | 目标家庭规模 SQLite 压测未执行 | 高 | 执行 20 / 50 / 200 传感器场景，记录写入、WAL、锁和 P95 |
@@ -480,3 +503,5 @@ ARS-01 的 191 个测试基线没有作为固定数字强行比较；当前代�
 ARS-02 的实现范围和工程质量已达到软件主体可复验水平，且未破坏第一阶段安全执行链路。但由于 Context v2 与 State Estimation 一致性失败，且隐私删除、目标规模性能、备份恢复、真实硬件和真实 AI Provider 未完全执行，**ARS-02.7 最终验收结论为：未完全通过**。
 
 本报告不阻止针对缺陷的修复工作，但在 D1 修复并复验前，不应将 ARS-02 标记为完成，也不应基于 Context v2 做出空间级自动化决策或进入依赖完整环境记忆的 ARS-03。
+
+2026-11-04 修复复验后，D1 不再阻塞依赖空间级状态的 Memory、Reasoning 和 Planning 开发。ARS-02 最终关闭仍受第 13 节 D2-D8 约束；其中 D2 需要单独确认，D3-D8 需要真实或目标规模验收证据。
