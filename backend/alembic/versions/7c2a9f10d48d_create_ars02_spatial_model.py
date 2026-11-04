@@ -5,11 +5,11 @@ Revises: 07b82937bedb
 Create Date: 2026-11-02
 """
 
-from collections.abc import Sequence
-from datetime import datetime, timezone
 import json
 import re
 import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
@@ -22,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _uuid() -> str:
@@ -61,12 +61,9 @@ def _unique_slug(conn: sa.Connection, parent_id: str | None, desired: str) -> st
 
 
 def _datetime(value: object) -> datetime:
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        parsed = datetime.fromisoformat(str(value))
+    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
@@ -431,9 +428,7 @@ def upgrade() -> None:
             ["space_id", "valid_from"],
             unique=False,
         )
-        batch_op.create_index(
-            "ix_entity_space_assignments_type", ["assignment_type"], unique=False
-        )
+        batch_op.create_index("ix_entity_space_assignments_type", ["assignment_type"], unique=False)
 
     _migrate_existing_data(op.get_bind())
 

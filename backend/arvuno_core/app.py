@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import SecretStr
 
 from arvuno_core import __version__
-from arvuno_core.agent_runtime.models import AgentEnvironmentSnapshot
+from arvuno_core.agent_runtime.models import AgentEnvironmentSnapshot, AgentSpaceSummary
 from arvuno_core.agent_runtime.runtime import AgentRuntime
 from arvuno_core.ai.mock import MockAIProvider
 from arvuno_core.ai.openai_compatible import (
@@ -48,8 +48,9 @@ from arvuno_core.devices.mock import MockDeviceAdapter
 from arvuno_core.devices.polling_runtime import DevicePollingRuntime
 from arvuno_core.devices.registry import DeviceRegistry
 from arvuno_core.devices.service import DeviceApplicationService
-from arvuno_core.environment.context import EnvironmentContextService, area_summary
+from arvuno_core.environment.context import EnvironmentContextService
 from arvuno_core.environment.context_v2 import EnvironmentContextV2Service
+from arvuno_core.environment.query import EnvironmentQueryService
 from arvuno_core.environment.reconciliation import EnvironmentReconciler
 from arvuno_core.errors import ArvunoError, ErrorResponse
 from arvuno_core.estimation.service import StateEstimationService
@@ -225,6 +226,12 @@ def create_app(
         unit_of_work_factory,
         state_estimation_service,
     )
+    environment_query_service = EnvironmentQueryService(
+        unit_of_work_factory,
+        state_estimation_service,
+        environment_name=app_settings.default_environment_name,
+    )
+    app.state.environment_query_service = environment_query_service
 
     async def rebuild_after_observations(received_at: object) -> None:
         await state_estimation_service.rebuild(
@@ -256,7 +263,7 @@ def create_app(
     )
     tool_registry = build_default_tool_registry(
         device_service,
-        environment_state_provider=lambda: environment_context.state,
+        environment_query_provider=environment_query_service.query,
         environment_state_sink=environment_context,
     )
     tool_executor = ToolExecutor(
@@ -327,12 +334,26 @@ def create_app(
 
     async def environment_snapshot() -> AgentEnvironmentSnapshot:
         state = environment_context.state
+        try:
+            spaces = await spatial_service.list_spaces(status="active")
+            space_catalog = [
+                AgentSpaceSummary(
+                    space_id=space.id,
+                    parent_id=space.parent_id,
+                    space_type=space.space_type,
+                    name=space.name,
+                    path=space.path,
+                    status=space.status,
+                )
+                for space in spaces
+            ]
+        except Exception:
+            logger.exception("agent_space_catalog_unavailable")
+            space_catalog = []
         return AgentEnvironmentSnapshot(
             environment_name=state.environment_name,
             updated_at=state.updated_at,
-            devices=[device.model_dump(mode="json") for device in state.devices.values()],
-            sensors=[sensor.model_dump(mode="json") for sensor in state.sensors.values()],
-            areas=area_summary(state),
+            spaces=space_catalog,
         )
 
     agent_runtime = AgentRuntime(

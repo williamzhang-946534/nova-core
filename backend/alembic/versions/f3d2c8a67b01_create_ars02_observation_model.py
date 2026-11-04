@@ -5,10 +5,10 @@ Revises: 7c2a9f10d48d
 Create Date: 2026-11-03
 """
 
-from collections.abc import Sequence
-from datetime import datetime, timezone
 import json
 import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
@@ -127,7 +127,7 @@ ATTRIBUTE_DEFINITIONS: dict[str, dict[str, object]] = {
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _json(value: object) -> str:
@@ -402,7 +402,10 @@ def upgrade() -> None:
         sa.Column("retention_until", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["source_id"], ["observation_sources.id"], name="fk_observations_source_id", ondelete="RESTRICT"
+            ["source_id"],
+            ["observation_sources.id"],
+            name="fk_observations_source_id",
+            ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["entity_id"], ["entities.id"], name="fk_observations_entity_id", ondelete="RESTRICT"

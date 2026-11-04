@@ -25,7 +25,9 @@ export default function SettingsPage() {
 
   function saveConnection() {
     setApiBaseUrl(baseUrl);
-    setApiToken(token);
+    if (token.trim().length > 0) {
+      setApiToken(token);
+    }
     setToken("");
     setTokenConfigured(hasStoredApiToken());
     void queryClient.invalidateQueries();

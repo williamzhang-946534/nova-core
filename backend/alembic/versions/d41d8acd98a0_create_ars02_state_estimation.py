@@ -37,7 +37,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["environment_id"], ["environments.id"], name="fk_estimation_targets_environment"
         ),
-        sa.ForeignKeyConstraint(["entity_id"], ["entities.id"], name="fk_estimation_targets_entity"),
+        sa.ForeignKeyConstraint(
+            ["entity_id"], ["entities.id"], name="fk_estimation_targets_entity"
+        ),
         sa.ForeignKeyConstraint(["space_id"], ["spaces.id"], name="fk_estimation_targets_space"),
         sa.ForeignKeyConstraint(
             ["attribute"],
@@ -109,9 +111,7 @@ def upgrade() -> None:
         ),
     )
     with op.batch_alter_table("state_estimates", schema=None) as batch_op:
-        batch_op.create_index(
-            "ix_state_estimates_target_generated", ["target_id", "generated_at"]
-        )
+        batch_op.create_index("ix_state_estimates_target_generated", ["target_id", "generated_at"])
         batch_op.create_index(
             "ix_state_estimates_environment_status_generated",
             ["environment_id", "status", "generated_at"],
@@ -137,16 +137,16 @@ def upgrade() -> None:
             name="fk_state_estimate_observations_observation",
             ondelete="CASCADE",
         ),
-        sa.PrimaryKeyConstraint("estimate_id", "observation_id", name="pk_state_estimate_observations"),
+        sa.PrimaryKeyConstraint(
+            "estimate_id", "observation_id", name="pk_state_estimate_observations"
+        ),
         sa.CheckConstraint(
             "contribution IN ('direct', 'candidate', 'context', 'negative_evidence')",
             name="ck_state_estimate_observations_contribution",
         ),
     )
     with op.batch_alter_table("state_estimate_observations", schema=None) as batch_op:
-        batch_op.create_index(
-            "ix_state_estimate_observations_observation", ["observation_id"]
-        )
+        batch_op.create_index("ix_state_estimate_observations_observation", ["observation_id"])
 
     op.create_table(
         "current_state_estimates",
@@ -195,7 +195,9 @@ def upgrade() -> None:
                 server_default=sa.text("1"),
             )
         )
-        batch_op.add_column(sa.Column("state_generated_at", sa.DateTime(timezone=True), nullable=True))
+        batch_op.add_column(
+            sa.Column("state_generated_at", sa.DateTime(timezone=True), nullable=True)
+        )
 
 
 def downgrade() -> None:

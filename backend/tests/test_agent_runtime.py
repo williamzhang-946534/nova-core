@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from arvuno_core.agent_runtime.models import AgentEnvironmentSnapshot
+from arvuno_core.agent_runtime.models import AgentEnvironmentSnapshot, AgentSpaceSummary
 from arvuno_core.agent_runtime.runtime import AgentRuntime
 from arvuno_core.ai.errors import ProviderTimeoutError
 from arvuno_core.ai.mock import MockAIProvider
@@ -91,6 +91,7 @@ def runtime_environment(
     outputs: list[dict[str, Any] | str] | None = None,
     errors: list[Exception] | None = None,
     task_result: TaskRunResult | None = None,
+    spaces: list[AgentSpaceSummary] | None = None,
 ) -> RuntimeEnvironment:
     store = MemoryProviderLogStore()
     provider = MockAIProvider(store, outputs=outputs, errors=errors)
@@ -110,6 +111,7 @@ def runtime_environment(
         return AgentEnvironmentSnapshot(
             environment_name="home",
             updated_at=datetime(2026, 10, 28, 12, 0, tzinfo=UTC),
+            spaces=spaces or [],
         )
 
     runtime = AgentRuntime(
@@ -314,6 +316,33 @@ def test_prompt_instruction_cannot_bypass_tool_permission_policy() -> None:
     assert environment.tasks.requests == []
 
 
+def test_prompt_contains_read_only_space_catalog_and_path_rule() -> None:
+    space = AgentSpaceSummary(
+        space_id="space-living",
+        parent_id="space-home",
+        space_type="room",
+        name="Living Room",
+        path="home/living-room",
+        status="active",
+    )
+    environment = runtime_environment(
+        spaces=[space],
+        outputs=[candidate("smalltalk")],
+    )
+
+    result = asyncio.run(
+        environment.runtime.chat("现在客厅是什么情况？", correlation_id="correlation-space-catalog")
+    )
+
+    assert result.status == "completed"
+    request = environment.provider.requests[0]
+    system = request.messages[0].content
+    prompt_data = json.loads(request.messages[1].content)["data"]
+    assert prompt_data["environment"]["spaces"] == [space.model_dump(mode="json")]
+    assert "environment.spaces catalog is the only space directory" in system
+    assert "never invent or guess a path" in system
+
+
 def test_provider_timeout_does_not_create_a_task_or_report_success() -> None:
     environment = runtime_environment(errors=[ProviderTimeoutError()])
 
@@ -400,7 +429,7 @@ def test_chat_api_executes_queries_and_low_risk_control_through_task_steps(tmp_p
         provider = MockAIProvider(
             SqlProviderLogStore(factory),
             outputs=[
-                candidate("environment_query", "get_environment_state", {"include_devices": True}),
+                candidate("environment_query", "get_environment_state", {}),
                 candidate("device_query", "get_device_state", {"device_id": device_id}),
                 candidate(
                     "device_control",

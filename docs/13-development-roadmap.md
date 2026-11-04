@@ -453,7 +453,7 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 | 长期阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | `ARS-01` Core Execution | 已完成 | 对应仓库 Phase 10 完成状态 |
-| `ARS-02` Spatial Environmental Intelligence | ARS-02.1 / 02.2 / 02.3 / 02.4 实现完成，待用户验收 | 设计见第 20 至 24 号文档；Spatial Model、Observation Model、Observation Pipeline 与 State Estimation / Environment Context v2 已实现 |
+| `ARS-02` Spatial Environmental Intelligence | ARS-02.1 / 02.2 / 02.3 / 02.4 / 02.5 实现完成，待用户验收 | 设计见第 20 至 24 号文档；Spatial Model、Observation Model、Observation Pipeline、State Estimation / Environment Context v2、空间查询 / AI 环境理解 / Web Console 已实现 |
 | `ARS-03` World Memory | 待开发 | 依赖 ARS-02 验收 |
 
 ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation Pipeline、State Estimation、Environment Context v2、迁移与 API 草案、隐私删除、SQLite 性能、测试策略和验收标准。用户确认设计后，先执行 `ARS-02.1 Spatial Model 工程实现`，不得直接跳到观测管线或状态估计。
@@ -465,3 +465,5 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 2026-11-03，`ARS-02.3 Observation Pipeline` 工程实现完成，已通过后端全量回归，当前状态为待用户验收。该子阶段将 HA / Mock 轮询状态统一映射为 Observation，完成来源与主体解析、schema 校验、单位标准化、时间语义、采样、去重、质量标记、批处理状态、来源心跳、有界保留清理和唯一当前 `device_states` 兼容投影；Observation 不自动产生 Event。State Estimation、Environment Context v2、Memory、Planner、Active Agent、隐私删除任务和真实硬件性能验收尚未开始。
 
 2026-11-03，`ARS-02.4 State Estimation 与 Environment Context v2` 工程实现完成，已通过后端全量回归（221 项测试）、Ruff 检查和格式检查，当前状态为待用户验收。该子阶段包含实体 / 空间状态目标、append-only 状态估计历史、可重建当前投影、来源与规则追溯、属性化融合策略、冲突 / 过期 / 不可用 / 未知语义、管道触发重建、状态查询 API 和 Context v2 只读构建；Context v2 快照仅在显式 rebuild 时持久化。Memory、Reasoning、Planner、Active Agent、ARS-02.5 隐私删除、视觉、机器人和工业功能均未开始。
+
+2026-11-03，`ARS-02.5 空间查询、AI 环境理解与 Web Console` 工程实现完成，待用户验收。该子阶段提供空间聚合 overview / coverage / 观测后代查询、Tool Registry 内的 `get_environment_state` v2 只读工具、带证据引用的确定性环境回答，以及 Spaces Console 的状态估计、感知覆盖、来源、观测历史和证据抽屉；Agent 不直接访问数据库、Repository、Adapter 或 Tool Executor。隐私删除仍属于 ARS-02 后续验收事项，Memory、Planner、Active Agent、视觉、机器人、GIS/3D、数字孪生和工业功能均未开始。

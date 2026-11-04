@@ -13,6 +13,7 @@ from arvuno_core.persistence.models import (
     ObservationIngestionBatch,
     ObservationSource,
     ObservationSourceHeartbeat,
+    SpacePath,
 )
 
 
@@ -212,6 +213,7 @@ class ObservationRepository:
         source_id: str | None = None,
         entity_id: str | None = None,
         space_id: str | None = None,
+        include_descendants: bool = False,
         attribute: str | None = None,
         quality_status: str | None = None,
         start_time: datetime | None = None,
@@ -229,7 +231,14 @@ class ObservationRepository:
         if entity_id is not None:
             filters.append(Observation.entity_id == entity_id)
         if space_id is not None:
-            filters.append(Observation.space_id == space_id)
+            if include_descendants:
+                filters.append(
+                    Observation.space_id.in_(
+                        select(SpacePath.descendant_id).where(SpacePath.ancestor_id == space_id)
+                    )
+                )
+            else:
+                filters.append(Observation.space_id == space_id)
         if attribute is not None:
             filters.append(Observation.attribute == attribute)
         if quality_status is not None:

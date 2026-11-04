@@ -2,6 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from arvuno_core.environment.query_models import EnvironmentQueryResult, StateCoverage
 from arvuno_core.spatial.models import (
     AssignedDevice,
     AssignmentHistoryItem,
@@ -68,6 +69,14 @@ class SpaceDeviceListData(BaseModel):
     data: list[AssignedDevice]
 
 
+class SpaceOverviewData(BaseModel):
+    data: EnvironmentQueryResult
+
+
+class SpaceCoverageData(BaseModel):
+    data: list[StateCoverage]
+
+
 class DeviceAssignmentData(BaseModel):
     data: DeviceAssignmentResult
 
@@ -83,7 +92,9 @@ __all__ = [
     "SpaceCreateRequest",
     "SpaceDetailData",
     "SpaceDeviceListData",
+    "SpaceCoverageData",
     "SpaceListData",
+    "SpaceOverviewData",
     "SpaceMoveRequest",
     "SpaceTreeData",
     "SpaceUpdateRequest",

@@ -4,15 +4,19 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from arvuno_core.api.security import require_api_token
 from arvuno_core.environment.context_v2 import EnvironmentContextV2Service
+from arvuno_core.environment.query import EnvironmentQueryService
+from arvuno_core.environment.query_models import EnvironmentStateQueryInput
 from arvuno_core.schemas.spaces import (
     DeviceAssignmentData,
     DeviceAssignmentHistoryData,
     DeviceAssignmentRequest,
+    SpaceCoverageData,
     SpaceCreateRequest,
     SpaceDetailData,
     SpaceDeviceListData,
     SpaceListData,
     SpaceMoveRequest,
+    SpaceOverviewData,
     SpaceTreeData,
     SpaceUpdateRequest,
 )
@@ -42,6 +46,13 @@ def get_environment_context_v2_service(request: Request) -> EnvironmentContextV2
     service = getattr(request.app.state, "environment_context_v2", None)
     if not isinstance(service, EnvironmentContextV2Service):
         raise RuntimeError("The environment context v2 service is unavailable.")
+    return service
+
+
+def get_environment_query_service(request: Request) -> EnvironmentQueryService:
+    service = getattr(request.app.state, "environment_query_service", None)
+    if not isinstance(service, EnvironmentQueryService):
+        raise RuntimeError("The environment query service is unavailable.")
     return service
 
 
@@ -86,6 +97,40 @@ async def get_space_state(
     service: Annotated[EnvironmentContextV2Service, Depends(get_environment_context_v2_service)],
 ) -> SpaceStateDataWrapper:
     return SpaceStateDataWrapper(data=await service.space_state(space_id))
+
+
+@router.get("/{space_id}/overview", response_model=SpaceOverviewData)
+async def get_space_overview(
+    space_id: str,
+    service: Annotated[EnvironmentQueryService, Depends(get_environment_query_service)],
+    attributes: Annotated[list[str] | None, Query()] = None,
+    include_descendants: bool = True,
+    include_evidence: bool = False,
+) -> SpaceOverviewData:
+    result = await service.query(
+        EnvironmentStateQueryInput(
+            space_id=space_id,
+            attributes=attributes or [],
+            include_descendants=include_descendants,
+            include_evidence=include_evidence,
+        )
+    )
+    return SpaceOverviewData(data=result)
+
+
+@router.get("/{space_id}/coverage", response_model=SpaceCoverageData)
+async def get_space_coverage(
+    space_id: str,
+    service: Annotated[EnvironmentQueryService, Depends(get_environment_query_service)],
+    attributes: Annotated[list[str] | None, Query()] = None,
+    include_descendants: bool = False,
+) -> SpaceCoverageData:
+    result = await service.coverage(
+        space_id,
+        attributes=attributes,
+        include_descendants=include_descendants,
+    )
+    return SpaceCoverageData(data=result)
 
 
 @router.get("/{space_id}", response_model=SpaceDetailData)

@@ -1,23 +1,22 @@
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
 from arvuno_core.devices.service import DeviceApplicationService
-from arvuno_core.environment.context import (
-    EnvironmentContextState,
-    EnvironmentStateSink,
-    area_summary,
+from arvuno_core.environment.context import EnvironmentStateSink
+from arvuno_core.environment.query_models import (
+    EnvironmentQueryResult,
+    EnvironmentStateQueryInput,
 )
 from arvuno_core.tools.models import (
     ControlDeviceInput,
     ControlDeviceOutput,
     GetDeviceStateInput,
     GetDeviceStateOutput,
-    GetEnvironmentStateInput,
-    GetEnvironmentStateOutput,
     ListDevicesInput,
     ListDevicesOutput,
     ToolExecutionContext,
@@ -87,7 +86,10 @@ def _catalog_item(definition: ToolDefinition[Any, Any]) -> dict[str, Any]:
 def build_default_tool_registry(
     device_service: DeviceApplicationService,
     *,
-    environment_state_provider: Callable[[], EnvironmentContextState] | None = None,
+    environment_query_provider: Callable[
+        [EnvironmentStateQueryInput], Awaitable[EnvironmentQueryResult]
+    ]
+    | None = None,
     environment_state_sink: EnvironmentStateSink | None = None,
 ) -> ToolRegistry:
     async def list_devices(
@@ -127,41 +129,15 @@ def build_default_tool_registry(
 
     async def get_environment_state(
         _context: ToolExecutionContext,
-        raw_input: GetEnvironmentStateInput,
-    ) -> GetEnvironmentStateOutput:
-        state = (
-            environment_state_provider()
-            if environment_state_provider is not None
-            else EnvironmentContextState()
-        )
-        devices = [
-            device.model_dump(mode="json")
-            for device in state.devices.values()
-            if raw_input.area is None or device.area == raw_input.area
-        ]
-        sensors = [
-            sensor.model_dump(mode="json")
-            for sensor in state.sensors.values()
-            if raw_input.area is None
-            or next(
-                (
-                    device.area
-                    for device in state.devices.values()
-                    if device.device_id == sensor.device_id
-                ),
-                None,
+        raw_input: EnvironmentStateQueryInput,
+    ) -> EnvironmentQueryResult:
+        if environment_query_provider is None:
+            return EnvironmentQueryResult(
+                service_available=False,
+                environment_name="unavailable",
+                generated_at=datetime.now(UTC),
             )
-            == raw_input.area
-        ]
-        return GetEnvironmentStateOutput(
-            environment_id=state.environment_id,
-            environment_name=state.environment_name,
-            updated_at=state.updated_at,
-            devices=devices if raw_input.include_devices else [],
-            sensors=sensors if raw_input.include_devices else [],
-            areas=area_summary(state),
-            recent_events=[],
-        )
+        return await environment_query_provider(raw_input)
 
     async def control_device(
         _context: ToolExecutionContext,
@@ -215,15 +191,15 @@ def build_default_tool_registry(
     registry.register(
         ToolDefinition(
             name="get_environment_state",
-            version="1.0.0",
-            description="Read the current Arvuno environment context.",
+            version="2.0.0",
+            description="Read current spatial state estimates, sources, coverage, and evidence.",
             category="environment_query",
             risk_level=ToolRiskLevel.READ_ONLY,
             default_permission=ToolPermission.ALLOW,
             requires_confirmation=False,
             enabled=True,
-            input_type=GetEnvironmentStateInput,
-            output_type=GetEnvironmentStateOutput,
+            input_type=EnvironmentStateQueryInput,
+            output_type=EnvironmentQueryResult,
             handler=get_environment_state,
         )
     )

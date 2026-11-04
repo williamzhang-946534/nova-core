@@ -82,6 +82,17 @@ class AgentToolDescriptor(BaseModel):
     enabled: bool
 
 
+class AgentSpaceSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    space_id: str
+    parent_id: str | None = None
+    space_type: str
+    name: str
+    path: str
+    status: str
+
+
 class ValidatedToolCall(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -94,9 +105,7 @@ class AgentEnvironmentSnapshot(BaseModel):
 
     environment_name: str
     updated_at: datetime
-    devices: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
-    sensors: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
-    areas: dict[str, dict[str, int | list[str]]] = Field(default_factory=dict)
+    spaces: list[AgentSpaceSummary] = Field(default_factory=list, max_length=200)
 
 
 class AgentErrorSummary(BaseModel):
@@ -165,6 +174,7 @@ _INTENT_TOOLS: dict[AgentIntentType, set[str]] = {
 
 
 __all__ = [
+    "AgentSpaceSummary",
     "AgentCandidateOutput",
     "AgentChatResult",
     "AgentConfirmationSummary",
