@@ -453,7 +453,7 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 | 长期阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | `ARS-01` Core Execution | 已完成 | 对应仓库 Phase 10 完成状态 |
-| `ARS-02` Spatial Environmental Intelligence | ARS-02.1 / 02.2 / 02.3 / 02.4 / 02.5 实现完成，待用户验收 | 设计见第 20 至 24 号文档；Spatial Model、Observation Model、Observation Pipeline、State Estimation / Environment Context v2、空间查询 / AI 环境理解 / Web Console 已实现 |
+| `ARS-02` Spatial Environmental Intelligence | ARS-02.7 最终验收已完成，结论为未完全通过；待修复 Context v2 缺陷并复验 | 设计见第 20 至 24 号文档；验收补充见第 25、26 号文档。Spatial Model、Observation Model、Observation Pipeline、State Estimation、空间查询 / AI 环境理解 / Web Console 已实现；Environment Context v2 空间状态投影存在阻塞缺陷 |
 | `ARS-03` World Memory | 待开发 | 依赖 ARS-02 验收 |
 
 ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation Pipeline、State Estimation、Environment Context v2、迁移与 API 草案、隐私删除、SQLite 性能、测试策略和验收标准。用户确认设计后，先执行 `ARS-02.1 Spatial Model 工程实现`，不得直接跳到观测管线或状态估计。
@@ -467,3 +467,7 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 2026-11-03，`ARS-02.4 State Estimation 与 Environment Context v2` 工程实现完成，已通过后端全量回归（221 项测试）、Ruff 检查和格式检查，当前状态为待用户验收。该子阶段包含实体 / 空间状态目标、append-only 状态估计历史、可重建当前投影、来源与规则追溯、属性化融合策略、冲突 / 过期 / 不可用 / 未知语义、管道触发重建、状态查询 API 和 Context v2 只读构建；Context v2 快照仅在显式 rebuild 时持久化。Memory、Reasoning、Planner、Active Agent、ARS-02.5 隐私删除、视觉、机器人和工业功能均未开始。
 
 2026-11-03，`ARS-02.5 空间查询、AI 环境理解与 Web Console` 工程实现完成，待用户验收。该子阶段提供空间聚合 overview / coverage / 观测后代查询、Tool Registry 内的 `get_environment_state` v2 只读工具、带证据引用的确定性环境回答，以及 Spaces Console 的状态估计、感知覆盖、来源、观测历史和证据抽屉；Agent 不直接访问数据库、Repository、Adapter 或 Tool Executor。隐私删除仍属于 ARS-02 后续验收事项，Memory、Planner、Active Agent、视觉、机器人、GIS/3D、数字孪生和工业功能均未开始。
+
+2026-11-04，`ARS-02.6 真实 ESPHome / ESP32 传感器验证` 的软件接口验收完成，真实硬件验收因当前没有 ESP32 和相关传感器而未执行。隔离空库通过 Alembic 升级，Mock Adapter 与 HA Demo 分别通过 Device Registry、Observation Pipeline、来源追踪、时间/单位/质量标记、State Estimation、Context v2、只读 Tool 和重启恢复验证；后端全量回归 228 项通过，Ruff lint 和格式检查通过。HA 写操作保持关闭并通过 Tool Executor 拒绝写操作验证。结果见 `docs/25-ars02-real-esphome-acceptance.md`。Mock 与 HA Demo 结果未替代真实 ESPHome / ESP32 验收。
+
+2026-11-04，`ARS-02.7 完整验收` 已完成并输出 `docs/26-ars02-final-acceptance-report.md`。后端全量回归 228 项通过，Ruff、前端类型检查 / 构建 / 格式检查、Alembic 空库升级和隔离环境重启恢复通过；Mock 与 HA Demo 链路、空间历史、观测来源、时间语义、状态估计、只读 Tool、安全链路和 Web Console 空 / 失败态完成检查。最终结论为**未完全通过**：Environment Context v2 未投影 18 条空间级状态估计，与当前状态读模型不一致；隐私删除端到端审计、目标规模 SQLite 压测、备份恢复演练、真实 ESPHome / ESP32 和真实 AI Provider 验收仍未执行或未完全执行。ARS-02 不得标记关闭，应先修复 Context v2 缺陷并按第 26 号报告复验后再进入 ARS-03。
