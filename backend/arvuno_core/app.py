@@ -38,6 +38,9 @@ from arvuno_core.api.memory import (
 )
 from arvuno_core.api.observations import router as observations_router
 from arvuno_core.api.observations import source_router as observation_sources_router
+from arvuno_core.api.perception import router as perception_router
+from arvuno_core.api.planning import router as planning_router
+from arvuno_core.api.proactive import router as proactive_router
 from arvuno_core.api.reasoning import router as reasoning_router
 from arvuno_core.api.settings import router as settings_router
 from arvuno_core.api.spaces import device_router as space_device_router
@@ -73,10 +76,13 @@ from arvuno_core.logging_config import correlation_id_var
 from arvuno_core.memory.service import MemoryService
 from arvuno_core.observations.pipeline import ObservationPipeline
 from arvuno_core.observations.service import ObservationService
+from arvuno_core.perception.service import ActivePerceptionService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.provider_logs import SqlProviderLogStore
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.planning.service import PlanningService
+from arvuno_core.proactive.service import ProactiveService
 from arvuno_core.reasoning.service import ReasoningService
 from arvuno_core.schemas.memory import MemoryRetrievalRequest
 from arvuno_core.spatial.service import SpatialService
@@ -479,6 +485,36 @@ def create_app(
     )
     app.state.automation_service = automation_service
     app.state.notification_service = notification_service
+    app.state.planning_service = PlanningService(
+        unit_of_work_factory,
+        RegistryToolCatalog(tool_registry, permissions=app_settings.tool_permissions),
+        app.state.task_service,
+        device_service,
+        environment_name=app_settings.default_environment_name,
+    )
+    app.state.proactive_service = ProactiveService(
+        unit_of_work_factory,
+        notification_service,
+        environment_name=app_settings.default_environment_name,
+        default_autonomy_level=2,
+        max_autonomy_level=2,
+    )
+    app.state.perception_service = ActivePerceptionService(
+        unit_of_work_factory,
+        observation_service,
+        state_estimation_service,
+        reasoning_service,
+        environment_name=app_settings.default_environment_name,
+    )
+    app.state.perception_observer = None
+    event_bus.subscribe(
+        app.state.proactive_service.handle_event,
+        event_types={
+            ArvunoEventType.SENSOR_UPDATED.value,
+            ArvunoEventType.DEVICE_UNAVAILABLE.value,
+            ArvunoEventType.TASK_FAILED.value,
+        },
+    )
     app.state.initialize_tool_runtime = initialize_tool_runtime
     provider_log_store = SqlProviderLogStore(unit_of_work_factory)
     if ai_provider is None:
@@ -563,6 +599,9 @@ def create_app(
     app.include_router(memory_preference_router)
     app.include_router(history_router)
     app.include_router(reasoning_router)
+    app.include_router(planning_router)
+    app.include_router(proactive_router)
+    app.include_router(perception_router)
 
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next: Any) -> Any:

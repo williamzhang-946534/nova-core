@@ -88,6 +88,7 @@ class TaskPlanStep(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     tool_name: str = Field(min_length=1, max_length=255)
     input: dict[str, Any] = Field(default_factory=dict)
+    requires_confirmation: bool = False
 
 
 class TaskCreate(BaseModel):

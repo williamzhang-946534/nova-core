@@ -6,6 +6,7 @@ import logging
 import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from inspect import signature
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -56,6 +57,7 @@ class TaskToolExecutorProtocol(Protocol):
         *,
         context: ToolExecutionContext,
         confirmation_token: str | None = None,
+        requires_confirmation: bool = False,
         task_id: str | None = None,
         task_step_id: str | None = None,
     ) -> ToolExecutionResult: ...
@@ -86,6 +88,9 @@ class TaskService:
         self._task_id_factory = task_id_factory
         self._step_id_factory = step_id_factory
         self._event_id_factory = event_id_factory
+        self._executor_accepts_confirmation_hint = (
+            "requires_confirmation" in signature(tool_executor.execute).parameters
+        )
 
     async def create_task(
         self,
@@ -219,6 +224,7 @@ class TaskService:
         step = next((item for item in steps if item.id == step_id), None)
         if step is None or step.status is not TaskStepStatus.WAITING_CONFIRMATION:
             raise TaskStateError("The confirmed task step is no longer waiting.")
+        requires_confirmation = _step_requires_confirmation(task, step.step_index)
 
         remaining = self._remaining_seconds(task)
         if remaining <= 0:
@@ -255,7 +261,7 @@ class TaskService:
         await self._publish_user_confirmed(task_id, token_hash)
         try:
             async with asyncio.timeout(remaining):
-                result = await self._tool_executor.execute(
+                result = await self._execute_tool(
                     step.tool_name or "",
                     step.input or {},
                     context=ToolExecutionContext(
@@ -264,6 +270,7 @@ class TaskService:
                         task_step_id=step.id,
                     ),
                     confirmation_token=confirmation_token,
+                    requires_confirmation=requires_confirmation,
                     task_id=task_id,
                     task_step_id=step.id,
                 )
@@ -425,13 +432,17 @@ class TaskService:
                     try:
                         if step.status is TaskStepStatus.PENDING:
                             await self._start_step(task_id, step.id)
-                        result = await self._tool_executor.execute(
+                        result = await self._execute_tool(
                             step.tool_name or "",
                             step.input or {},
                             context=ToolExecutionContext(
                                 correlation_id=detail.correlation_id or task_id,
                                 task_id=task_id,
                                 task_step_id=step.id,
+                            ),
+                            confirmation_token=None,
+                            requires_confirmation=_step_requires_confirmation(
+                                detail, step.step_index
                             ),
                             task_id=task_id,
                             task_step_id=step.id,
@@ -500,6 +511,27 @@ class TaskService:
                 unit_of_work.commit()
 
         await asyncio.to_thread(persist)
+
+    async def _execute_tool(
+        self,
+        tool_name: str,
+        raw_input: dict[str, Any] | None,
+        *,
+        context: ToolExecutionContext,
+        confirmation_token: str | None,
+        requires_confirmation: bool,
+        task_id: str,
+        task_step_id: str,
+    ) -> ToolExecutionResult:
+        arguments: dict[str, Any] = {
+            "context": context,
+            "confirmation_token": confirmation_token,
+            "task_id": task_id,
+            "task_step_id": task_step_id,
+        }
+        if self._executor_accepts_confirmation_hint:
+            arguments["requires_confirmation"] = requires_confirmation
+        return await self._tool_executor.execute(tool_name, raw_input or {}, **arguments)
 
     async def _complete_step(
         self,
@@ -788,6 +820,14 @@ def _task_plan(request: TaskCreate) -> dict[str, Any]:
         "steps": [step.model_dump(mode="json") for step in request.steps],
         "confirmations_used": [],
     }
+
+
+def _step_requires_confirmation(task: Any, step_index: int) -> bool:
+    plan_steps = task.plan.get("steps") if isinstance(task.plan, dict) else None
+    if not isinstance(plan_steps, list) or step_index >= len(plan_steps):
+        return False
+    step = plan_steps[step_index]
+    return isinstance(step, dict) and step.get("requires_confirmation") is True
 
 
 def _copy_plan(plan: dict[str, Any]) -> dict[str, Any]:

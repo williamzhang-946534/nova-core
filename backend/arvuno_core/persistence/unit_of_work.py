@@ -19,6 +19,9 @@ from arvuno_core.persistence.observations import (
     ObservationSourceHeartbeatRepository,
     ObservationSourceRepository,
 )
+from arvuno_core.persistence.perception import PerceptionRepository
+from arvuno_core.persistence.planning import PlanningRepository
+from arvuno_core.persistence.proactive import ProactiveRepository
 from arvuno_core.persistence.provider_logs import ProviderLogRepository
 from arvuno_core.persistence.reasoning import ReasoningRepository
 from arvuno_core.persistence.repositories import (
@@ -68,6 +71,9 @@ class SqlAlchemyUnitOfWork:
         self.memories: MemoryRepository | None = None
         self.history: HistoryRepository | None = None
         self.reasoning: ReasoningRepository | None = None
+        self.planning: PlanningRepository | None = None
+        self.proactive: ProactiveRepository | None = None
+        self.perception: PerceptionRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -95,6 +101,9 @@ class SqlAlchemyUnitOfWork:
         self.memories = MemoryRepository(self._session)
         self.history = HistoryRepository(self._session)
         self.reasoning = ReasoningRepository(self._session)
+        self.planning = PlanningRepository(self._session)
+        self.proactive = ProactiveRepository(self._session)
+        self.perception = PerceptionRepository(self._session)
         return self
 
     def __exit__(
@@ -148,3 +157,6 @@ class SqlAlchemyUnitOfWork:
             self.memories = None
             self.history = None
             self.reasoning = None
+            self.planning = None
+            self.proactive = None
+            self.perception = None

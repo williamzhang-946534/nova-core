@@ -99,6 +99,7 @@ class ToolExecutor:
         *,
         context: ToolExecutionContext,
         confirmation_token: str | None = None,
+        requires_confirmation: bool = False,
         task_id: str | None = None,
         task_step_id: str | None = None,
     ) -> ToolExecutionResult:
@@ -171,7 +172,7 @@ class ToolExecutor:
             raise error
 
         subject = self._confirmation_subject(tool_name, serialized_input, task_id)
-        if decision.requires_confirmation:
+        if decision.requires_confirmation or requires_confirmation:
             if confirmation_token is None:
                 token = self._confirmation_service.issue(subject)
                 await self._update(

@@ -125,6 +125,7 @@ class ObservationConsentRepository:
 
     def add(self, consent: ObservationConsent) -> ObservationConsent:
         self._session.add(consent)
+        self._session.flush()
         return consent
 
 
@@ -171,6 +172,15 @@ class ObservationRepository:
             return self._session.scalars(statement).first()
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read the latest observation.") from exc
+
+    def source_ids_for_attribute(self, attribute: str) -> set[str]:
+        try:
+            rows = self._session.scalars(
+                select(Observation.source_id).where(Observation.attribute == attribute).distinct()
+            )
+            return set(rows)
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read observation source usage.") from exc
 
     def append(self, observation: Observation) -> tuple[Observation, bool]:
         existing = self.get_by_dedupe_key(observation.dedupe_key)

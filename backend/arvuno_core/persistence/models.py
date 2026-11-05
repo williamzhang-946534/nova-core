@@ -1353,6 +1353,411 @@ class HypothesisEvidence(Base):
     )
 
 
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    objective: Mapped[str] = mapped_column(Text)
+    origin_type: Mapped[str] = mapped_column(String(30), default="user")
+    origin_record_id: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), default="candidate")
+    goal_type: Mapped[str] = mapped_column(String(30), default="other")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    desired_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    constraints: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    prohibitions: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    clarifications: Mapped[list[str]] = mapped_column(JSON, default=list)
+    unknowns: Mapped[list[str]] = mapped_column(JSON, default=list)
+    success_conditions: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    failure_conditions: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    authorization_scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    time_window: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    reasoning_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reasoning_sessions.id", ondelete="SET NULL")
+    )
+    parent_goal_id: Mapped[str | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"))
+    confirmed_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "origin_type IN ('user', 'model', 'automation', 'system')",
+            name="ck_goals_origin",
+        ),
+        CheckConstraint(
+            "status IN ('candidate', 'active', 'paused', 'completed', 'failed', "
+            "'cancelled', 'expired')",
+            name="ck_goals_status",
+        ),
+        CheckConstraint(
+            "goal_type IN ('comfort', 'energy', 'device_state', 'routine', "
+            "'diagnosis', 'safety_check', 'other')",
+            name="ck_goals_type",
+        ),
+        CheckConstraint(
+            "priority IN ('low', 'normal', 'high', 'critical')",
+            name="ck_goals_priority",
+        ),
+        Index("ix_goals_environment_status", "environment_id", "status"),
+        Index("ix_goals_origin", "origin_type", "origin_record_id"),
+    )
+
+    environment: Mapped[Environment] = relationship()
+    revisions: Mapped[list["GoalRevision"]] = relationship(
+        back_populates="goal", cascade="all, delete-orphan", passive_deletes=True
+    )
+    plans: Mapped[list["Plan"]] = relationship(
+        back_populates="goal", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class GoalRevision(Base):
+    __tablename__ = "goal_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"))
+    revision: Mapped[int]
+    change_type: Mapped[str] = mapped_column(String(30))
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON)
+    reason: Mapped[str] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(String(50))
+    source_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("goal_id", "revision", name="uq_goal_revisions_goal_revision"),
+        CheckConstraint(
+            "change_type IN ('create', 'clarify', 'rescope', 'confirm', 'pause', "
+            "'resume', 'close')",
+            name="ck_goal_revisions_change_type",
+        ),
+        Index("ix_goal_revisions_goal", "goal_id", "revision"),
+    )
+
+    goal: Mapped[Goal] = relationship(back_populates="revisions")
+
+
+class Plan(Base):
+    __tablename__ = "plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"))
+    reasoning_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reasoning_sessions.id", ondelete="SET NULL")
+    )
+    version: Mapped[int]
+    status: Mapped[str] = mapped_column(String(30), default="draft")
+    planner_type: Mapped[str] = mapped_column(String(20), default="rule")
+    run_mode: Mapped[str] = mapped_column(String(30), default="awaiting_confirmation")
+    strategy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    constraints: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    max_risk_level: Mapped[str] = mapped_column(String(20), default="read_only")
+    estimated_duration: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    resource_requirements: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    success_criteria: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    failure_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    submitted_task_id: Mapped[str | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    superseded_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("plans.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("goal_id", "version", name="uq_plans_goal_version"),
+        CheckConstraint(
+            "status IN ('draft', 'validated', 'awaiting_confirmation', 'approved', "
+            "'submitted', 'superseded', 'cancelled', 'rejected')",
+            name="ck_plans_status",
+        ),
+        CheckConstraint(
+            "planner_type IN ('rule', 'model', 'hybrid', 'template', 'user')",
+            name="ck_plans_planner_type",
+        ),
+        CheckConstraint(
+            "run_mode IN ('analyze_only', 'suggest_only', 'awaiting_confirmation', "
+            "'confirm_then_execute', 'limited_auto_execute')",
+            name="ck_plans_run_mode",
+        ),
+        CheckConstraint(
+            "max_risk_level IN ('read_only', 'low_risk', 'medium_risk', 'high_risk')",
+            name="ck_plans_max_risk",
+        ),
+        Index("ix_plans_goal_version", "goal_id", "version"),
+        Index("ix_plans_environment_status", "environment_id", "status"),
+        Index("ix_plans_submitted_task", "submitted_task_id"),
+    )
+
+    goal: Mapped[Goal] = relationship(back_populates="plans")
+    steps: Mapped[list["PlanStep"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", passive_deletes=True
+    )
+    replanning_records: Mapped[list["PlanReplanningRecord"]] = relationship(
+        back_populates="old_plan",
+        foreign_keys="PlanReplanningRecord.old_plan_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PlanStep(Base):
+    __tablename__ = "plan_steps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"))
+    step_index: Mapped[int]
+    name: Mapped[str] = mapped_column(String(255))
+    purpose: Mapped[str] = mapped_column(Text)
+    tool_name: Mapped[str] = mapped_column(String(255))
+    tool_version: Mapped[str | None] = mapped_column(String(50))
+    input: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    preconditions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    expected_effect: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    postconditions: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    verification: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    risk_level: Mapped[str] = mapped_column(String(20))
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))
+    retry_policy: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    on_failure: Mapped[str] = mapped_column(String(40), default="stop")
+    depends_on: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("plan_id", "step_index", name="uq_plan_steps_plan_index"),
+        CheckConstraint(
+            "risk_level IN ('read_only', 'low_risk', 'medium_risk', 'high_risk')",
+            name="ck_plan_steps_risk",
+        ),
+        CheckConstraint(
+            "on_failure IN ('stop', 'request_user_confirmation', 'request_replan')",
+            name="ck_plan_steps_on_failure",
+        ),
+        Index("ix_plan_steps_plan", "plan_id", "step_index"),
+        Index("ix_plan_steps_tool", "tool_name"),
+    )
+
+    plan: Mapped[Plan] = relationship(back_populates="steps")
+
+
+class PlanReplanningRecord(Base):
+    __tablename__ = "plan_replanning_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    old_plan_id: Mapped[str] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"))
+    new_plan_id: Mapped[str | None] = mapped_column(ForeignKey("plans.id", ondelete="SET NULL"))
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    trigger_type: Mapped[str] = mapped_column(String(50))
+    trigger_record_type: Mapped[str | None] = mapped_column(String(50))
+    trigger_record_id: Mapped[str | None] = mapped_column(String(255))
+    change_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    risk_delta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    already_executed_steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    reversible_steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    decision: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "trigger_type IN ('precondition_failed', 'tool_failed', 'verification_failed', "
+            "'goal_changed', 'environment_changed', 'user_cancelled', "
+            "'priority_preempted', 'timeout')",
+            name="ck_plan_replanning_trigger",
+        ),
+        CheckConstraint(
+            "decision IN ('replan', 'stop', 'wait_user_confirmation', 'reject')",
+            name="ck_plan_replanning_decision",
+        ),
+        Index("ix_plan_replanning_old_plan", "old_plan_id", "created_at"),
+        Index("ix_plan_replanning_task", "task_id"),
+    )
+
+    old_plan: Mapped[Plan] = relationship(
+        back_populates="replanning_records",
+        foreign_keys=[old_plan_id],
+    )
+
+
+class ProactiveSuggestion(Base):
+    __tablename__ = "proactive_suggestions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    reasoning_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reasoning_sessions.id", ondelete="SET NULL")
+    )
+    hypothesis_id: Mapped[str | None] = mapped_column(
+        ForeignKey("hypotheses.id", ondelete="SET NULL")
+    )
+    goal_id: Mapped[str | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"))
+    trigger_type: Mapped[str] = mapped_column(String(50))
+    title: Mapped[str] = mapped_column(String(255))
+    message: Mapped[str] = mapped_column(Text)
+    importance: Mapped[str] = mapped_column(String(20), default="normal")
+    autonomy_level: Mapped[int] = mapped_column(Integer, default=1)
+    candidate_action: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    dedupe_key: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(30), default="evaluated")
+    suppression_count: Mapped[int] = mapped_column(Integer, default=0)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_feedback: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quality_score: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "trigger_type IN ('trend', 'anomaly', 'goal_deviation', 'task_failure', "
+            "'coverage_gap', 'device_fault', 'cost_risk')",
+            name="ck_proactive_suggestions_trigger_type",
+        ),
+        CheckConstraint(
+            "importance IN ('low', 'normal', 'high')",
+            name="ck_proactive_suggestions_importance",
+        ),
+        CheckConstraint(
+            "autonomy_level BETWEEN 0 AND 4",
+            name="ck_proactive_suggestions_autonomy_level",
+        ),
+        CheckConstraint(
+            "status IN ('evaluated', 'suppressed', 'queued', 'delivered', 'opened', "
+            "'accepted', 'dismissed', 'expired')",
+            name="ck_proactive_suggestions_status",
+        ),
+        Index(
+            "ix_proactive_suggestions_environment_dedupe",
+            "environment_id",
+            "dedupe_key",
+        ),
+        Index("ix_proactive_suggestions_status", "status"),
+        Index("ix_proactive_suggestions_cooldown", "cooldown_until"),
+        Index("ix_proactive_suggestions_delivered", "delivered_at"),
+    )
+
+    environment: Mapped[Environment] = relationship()
+    reasoning_session: Mapped[ReasoningSession | None] = relationship()
+    hypothesis: Mapped[Hypothesis | None] = relationship()
+    goal: Mapped[Goal | None] = relationship()
+
+
+class ActivePerceptionRequest(Base):
+    __tablename__ = "active_perception_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    reasoning_session_id: Mapped[str] = mapped_column(
+        ForeignKey("reasoning_sessions.id", ondelete="CASCADE")
+    )
+    hypothesis_id: Mapped[str | None] = mapped_column(
+        ForeignKey("hypotheses.id", ondelete="SET NULL")
+    )
+    question: Mapped[str] = mapped_column(Text)
+    gap_type: Mapped[str] = mapped_column(String(50))
+    subject_type: Mapped[str] = mapped_column(String(50))
+    subject_id: Mapped[str] = mapped_column(String(255))
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id", ondelete="CASCADE"))
+    entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    attribute: Mapped[str | None] = mapped_column(String(50))
+    needed_time_range: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    current_coverage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    expected_value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    would_resolve: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    proposed_capability: Mapped[str | None] = mapped_column(String(100))
+    proposed_input: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    privacy_level: Mapped[str] = mapped_column(String(20), default="normal")
+    requires_user_consent: Mapped[bool] = mapped_column(Boolean, default=False)
+    authorized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    authorization_scope: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    cost_estimate: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(30), default="proposed")
+    fulfilled_by_type: Mapped[str | None] = mapped_column(String(50))
+    fulfilled_by_id: Mapped[str | None] = mapped_column(String(255))
+    follow_up_reasoning_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("reasoning_sessions.id", ondelete="SET NULL")
+    )
+    unavailable_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "gap_type IN ('space_coverage', 'time_coverage', 'quality', "
+            "'entity_identity', 'post_action_verification', 'procedure')",
+            name="ck_active_perception_gap_type",
+        ),
+        CheckConstraint(
+            "subject_type IN ('space', 'entity')",
+            name="ck_active_perception_subject_type",
+        ),
+        CheckConstraint(
+            "privacy_level IN ('normal', 'sensitive')",
+            name="ck_active_perception_privacy",
+        ),
+        CheckConstraint(
+            "privacy_level != 'sensitive' OR requires_user_consent = 1",
+            name="ck_active_perception_sensitive_consent",
+        ),
+        CheckConstraint(
+            "status IN ('proposed', 'awaiting_consent', 'rejected', 'queued', "
+            "'executed', 'fulfilled', 'unavailable', 'expired')",
+            name="ck_active_perception_status",
+        ),
+        CheckConstraint(
+            "status != 'fulfilled' OR (fulfilled_by_type IS NOT NULL "
+            "AND fulfilled_by_id IS NOT NULL)",
+            name="ck_active_perception_fulfilled_source",
+        ),
+        Index(
+            "ix_active_perception_environment_status",
+            "environment_id",
+            "status",
+        ),
+        Index(
+            "ix_active_perception_subject",
+            "subject_type",
+            "subject_id",
+            "attribute",
+        ),
+        Index("ix_active_perception_expires", "expires_at"),
+    )
+
+    environment: Mapped[Environment] = relationship()
+    reasoning_session: Mapped[ReasoningSession] = relationship(foreign_keys=[reasoning_session_id])
+    follow_up_reasoning_session: Mapped[ReasoningSession | None] = relationship(
+        foreign_keys=[follow_up_reasoning_session_id]
+    )
+    hypothesis: Mapped[Hypothesis | None] = relationship()
+
+
 class Automation(Base):
     __tablename__ = "automations"
 
