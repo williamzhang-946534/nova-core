@@ -390,6 +390,7 @@ def test_mock_observer_records_real_observation_updates_state_and_reruns_reasoni
             StateEstimationService(environment.factory, environment_name="home").list(
                 space_id=room_id,
                 attribute="temperature",
+                now=NOW,
             )
         )
         assert estimates[0][0].status == "observed"

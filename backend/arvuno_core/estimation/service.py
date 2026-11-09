@@ -62,6 +62,7 @@ class StateEstimationService:
         include_history: bool = False,
         page: int = 1,
         page_size: int = 50,
+        now: datetime | None = None,
     ) -> tuple[list[StateEstimateView], int]:
         return await asyncio.to_thread(
             self._list,
@@ -74,6 +75,7 @@ class StateEstimationService:
             include_history=include_history,
             page=page,
             page_size=page_size,
+            now=_now(now),
         )
 
     async def get(self, estimate_id: str) -> StateEstimateView:
@@ -303,8 +305,8 @@ class StateEstimationService:
         include_history: bool,
         page: int,
         page_size: int,
+        now: datetime,
     ) -> tuple[list[StateEstimateView], int]:
-        now = datetime.now(UTC)
         with self._unit_of_work_factory() as uow:
             assert uow.state_estimates is not None
             repository = uow.state_estimates
