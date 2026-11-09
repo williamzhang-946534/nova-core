@@ -1837,3 +1837,619 @@ class Notification(Base):
 
     related_event: Mapped[Event | None] = relationship()
     related_task: Mapped[Task | None] = relationship()
+
+
+class MultimodalConsent(Base):
+    __tablename__ = "multimodal_consents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(String(255))
+    consent_type: Mapped[str] = mapped_column(String(40))
+    modality: Mapped[str] = mapped_column(String(30))
+    purpose: Mapped[str] = mapped_column(String(50))
+    provider_name: Mapped[str | None] = mapped_column(String(100))
+    processing_locations: Mapped[list[str]] = mapped_column(JSON, default=list)
+    space_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="granted")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "consent_type IN ('capture', 'processing', 'retention')",
+            name="ck_multimodal_consents_type",
+        ),
+        CheckConstraint(
+            "modality IN ('image', 'video_frame', 'audio')",
+            name="ck_multimodal_consents_modality",
+        ),
+        CheckConstraint(
+            "status IN ('granted', 'revoked', 'expired')",
+            name="ck_multimodal_consents_status",
+        ),
+        Index("ix_multimodal_consents_subject", "environment_id", "user_id", "status"),
+    )
+
+    environment: Mapped[Environment] = relationship()
+
+
+class MultimodalProvider(Base):
+    __tablename__ = "multimodal_providers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    provider_name: Mapped[str] = mapped_column(String(100))
+    capability: Mapped[str] = mapped_column(String(50))
+    media_kinds: Mapped[list[str]] = mapped_column(JSON)
+    processing_location: Mapped[str] = mapped_column(String(20))
+    data_sent_policy: Mapped[dict[str, Any]] = mapped_column(JSON)
+    model_id: Mapped[str] = mapped_column(String(255))
+    model_version: Mapped[str] = mapped_column(String(100))
+    max_bytes: Mapped[int] = mapped_column(Integer)
+    max_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    timeout_ms: Mapped[int] = mapped_column(Integer)
+    requires_explicit_consent: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_name",
+            "capability",
+            "processing_location",
+            name="uq_multimodal_providers_identity",
+        ),
+        CheckConstraint(
+            "capability IN ('vision_scene', 'vision_object', 'ocr', 'stt', 'tts', 'audio_event')",
+            name="ck_multimodal_providers_capability",
+        ),
+        CheckConstraint(
+            "processing_location IN ('local', 'cloud')",
+            name="ck_multimodal_providers_location",
+        ),
+        CheckConstraint(
+            "processing_location != 'cloud' OR requires_explicit_consent = 1",
+            name="ck_multimodal_providers_cloud_consent",
+        ),
+        Index("ix_multimodal_providers_capability_enabled", "capability", "enabled"),
+    )
+
+
+class MultimodalCaptureSession(Base):
+    __tablename__ = "multimodal_capture_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id", ondelete="CASCADE"))
+    entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    modality: Mapped[str] = mapped_column(String(30))
+    purpose: Mapped[str] = mapped_column(String(50))
+    origin_type: Mapped[str] = mapped_column(String(40))
+    origin_record_id: Mapped[str | None] = mapped_column(String(255))
+    requested_by: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(30), default="requested")
+    requires_capture_consent: Mapped[bool] = mapped_column(Boolean, default=False)
+    expected_media_count: Mapped[int] = mapped_column(Integer, default=1)
+    max_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    state_visibility: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "modality IN ('image', 'video_frame', 'audio')",
+            name="ck_multimodal_capture_sessions_modality",
+        ),
+        CheckConstraint(
+            "purpose IN ('user_query', 'scene_check', 'ocr', 'speech_input', "
+            "'audio_event', 'active_perception', 'accessibility_output')",
+            name="ck_multimodal_capture_sessions_purpose",
+        ),
+        CheckConstraint(
+            "origin_type IN ('user', 'active_perception', 'task_validation', 'system')",
+            name="ck_multimodal_capture_sessions_origin",
+        ),
+        CheckConstraint(
+            "status IN ('requested', 'awaiting_consent', 'uploaded', 'processing', "
+            "'processed', 'purging', 'purged', 'failed', 'cancelled', 'expired')",
+            name="ck_multimodal_capture_sessions_status",
+        ),
+        CheckConstraint("expected_media_count = 1", name="ck_multimodal_capture_single_media"),
+        Index("ix_multimodal_capture_sessions_environment_status", "environment_id", "status"),
+        Index("ix_multimodal_capture_sessions_correlation", "correlation_id"),
+    )
+
+    environment: Mapped[Environment] = relationship()
+    space: Mapped[Space | None] = relationship()
+    entity: Mapped[Entity | None] = relationship()
+    assets: Mapped[list["MultimodalMediaAsset"]] = relationship(
+        back_populates="capture_session", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class MultimodalMediaAsset(Base):
+    __tablename__ = "multimodal_media_assets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    capture_session_id: Mapped[str | None] = mapped_column(
+        ForeignKey("multimodal_capture_sessions.id", ondelete="CASCADE")
+    )
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    media_kind: Mapped[str] = mapped_column(String(30))
+    mime_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    storage_backend: Mapped[str] = mapped_column(String(40))
+    storage_key: Mapped[str | None] = mapped_column(String(255))
+    content_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    validation_status: Mapped[str] = mapped_column(String(30), default="pending")
+    sensitivity: Mapped[str] = mapped_column(String(20), default="normal")
+    purpose: Mapped[str] = mapped_column(String(50))
+    consent_id: Mapped[str] = mapped_column(ForeignKey("multimodal_consents.id"))
+    retention_class: Mapped[str] = mapped_column(String(40))
+    retention_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    purge_status: Mapped[str] = mapped_column(String(20), default="pending")
+    purge_reason: Mapped[str | None] = mapped_column(String(100))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    client_captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    client_time_source: Mapped[str | None] = mapped_column(String(50))
+    client_time_uncertainty_ms: Mapped[int | None] = mapped_column(Integer)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id", ondelete="CASCADE"))
+    entity_id: Mapped[str | None] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
+    metadata_summary: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "media_kind IN ('image', 'video_frame', 'audio_clip', 'tts_audio')",
+            name="ck_multimodal_media_assets_kind",
+        ),
+        CheckConstraint(
+            "validation_status IN ('pending', 'quarantined', 'valid', 'invalid')",
+            name="ck_multimodal_media_assets_validation",
+        ),
+        CheckConstraint(
+            "sensitivity IN ('normal', 'sensitive')",
+            name="ck_multimodal_media_assets_sensitivity",
+        ),
+        CheckConstraint(
+            "retention_class IN ('process_then_delete_1h', 'process_then_delete_24h', 'deleted')",
+            name="ck_multimodal_media_assets_retention",
+        ),
+        CheckConstraint(
+            "sensitivity != 'sensitive' OR retention_class = 'process_then_delete_1h'",
+            name="ck_multimodal_media_assets_sensitive_short_retention",
+        ),
+        CheckConstraint(
+            "purge_status != 'purged' OR (storage_key IS NULL AND content_available = 0)",
+            name="ck_multimodal_media_assets_purge_state",
+        ),
+        Index("ix_multimodal_media_assets_environment_received", "environment_id", "received_at"),
+        Index("ix_multimodal_media_assets_retention", "retention_until", "purge_status"),
+        Index("ix_multimodal_media_assets_session", "capture_session_id"),
+    )
+
+    capture_session: Mapped[MultimodalCaptureSession | None] = relationship(back_populates="assets")
+    consent: Mapped[MultimodalConsent] = relationship()
+
+
+class MultimodalProviderInvocation(Base):
+    __tablename__ = "multimodal_provider_invocations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    media_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("multimodal_media_assets.id", ondelete="CASCADE")
+    )
+    provider_id: Mapped[str] = mapped_column(ForeignKey("multimodal_providers.id"))
+    capability: Mapped[str] = mapped_column(String(50))
+    model_id: Mapped[str] = mapped_column(String(255))
+    model_version: Mapped[str] = mapped_column(String(100))
+    processing_location: Mapped[str] = mapped_column(String(20))
+    input_summary: Mapped[dict[str, Any]] = mapped_column(JSON)
+    request_digest: Mapped[str] = mapped_column(String(64))
+    response_digest: Mapped[str | None] = mapped_column(String(64))
+    sent_media_to_external: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(30), default="queued")
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_summary: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'timeout', 'cancelled')",
+            name="ck_multimodal_invocations_status",
+        ),
+        Index("ix_multimodal_invocations_asset", "media_asset_id", "created_at"),
+        Index("ix_multimodal_invocations_correlation", "correlation_id"),
+    )
+
+    media_asset: Mapped[MultimodalMediaAsset] = relationship()
+    provider: Mapped[MultimodalProvider] = relationship()
+
+
+class MultimodalExtractionResult(Base):
+    __tablename__ = "multimodal_extraction_results"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    media_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("multimodal_media_assets.id", ondelete="CASCADE")
+    )
+    invocation_id: Mapped[str] = mapped_column(
+        ForeignKey("multimodal_provider_invocations.id", ondelete="CASCADE")
+    )
+    result_kind: Mapped[str] = mapped_column(String(50))
+    schema_version: Mapped[str] = mapped_column(String(30))
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    confidence_level: Mapped[str] = mapped_column(String(20))
+    quality_status: Mapped[str] = mapped_column(String(30), default="candidate")
+    language: Mapped[str | None] = mapped_column(String(20))
+    alternatives: Mapped[list[Any] | None] = mapped_column(JSON)
+    model_id: Mapped[str] = mapped_column(String(255))
+    model_version: Mapped[str] = mapped_column(String(100))
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "result_kind IN ('scene_labels', 'objects', 'ocr_text', 'transcript', "
+            "'audio_events', 'structured_scene')",
+            name="ck_multimodal_extraction_result_kind",
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR confidence BETWEEN 0 AND 1",
+            name="ck_multimodal_extraction_confidence",
+        ),
+        CheckConstraint(
+            "confidence_level IN ('unknown', 'low', 'medium', 'high')",
+            name="ck_multimodal_extraction_confidence_level",
+        ),
+        CheckConstraint(
+            "quality_status IN ('candidate', 'valid_candidate', 'rejected', "
+            "'superseded', 'expired')",
+            name="ck_multimodal_extraction_quality",
+        ),
+        Index("ix_multimodal_extraction_asset", "media_asset_id", "created_at"),
+        Index("ix_multimodal_extraction_kind_status", "result_kind", "quality_status"),
+    )
+
+    media_asset: Mapped[MultimodalMediaAsset] = relationship()
+    invocation: Mapped[MultimodalProviderInvocation] = relationship()
+
+
+class MultimodalArtifactLink(Base):
+    __tablename__ = "multimodal_artifact_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    artifact_type: Mapped[str] = mapped_column(String(50))
+    artifact_id: Mapped[str] = mapped_column(String(36))
+    target_type: Mapped[str] = mapped_column(String(50))
+    target_id: Mapped[str] = mapped_column(String(255))
+    relation: Mapped[str] = mapped_column(String(50))
+    confidence: Mapped[float | None] = mapped_column(Float)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "artifact_type IN ('media_asset', 'provider_invocation', 'extraction_result')",
+            name="ck_multimodal_artifact_links_artifact",
+        ),
+        CheckConstraint(
+            "target_type IN ('observation', 'conversation_message', 'task', "
+            "'reasoning_evidence', 'memory')",
+            name="ck_multimodal_artifact_links_target",
+        ),
+        CheckConstraint(
+            "relation IN ('produced_observation', 'produced_message', 'evidence_for', "
+            "'memory_evidence_for')",
+            name="ck_multimodal_artifact_links_relation",
+        ),
+        Index("ix_multimodal_artifact_links_artifact", "artifact_type", "artifact_id"),
+        Index("ix_multimodal_artifact_links_target", "target_type", "target_id"),
+    )
+
+
+class MultimodalDataAccessGrant(Base):
+    __tablename__ = "multimodal_data_access_grants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(String(255))
+    modalities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    space_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(20), default="granted")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('granted', 'revoked', 'expired')",
+            name="ck_multimodal_access_grants_status",
+        ),
+        Index("ix_multimodal_access_grants_subject", "environment_id", "user_id", "status"),
+    )
+
+    environment: Mapped[Environment] = relationship()
+
+
+class MultimodalAuditEvent(Base):
+    __tablename__ = "multimodal_audit_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    environment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE")
+    )
+    actor_id: Mapped[str | None] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(60))
+    subject_type: Mapped[str | None] = mapped_column(String(50))
+    subject_id: Mapped[str | None] = mapped_column(String(255))
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('asset_uploaded', 'asset_read', 'asset_analyzed', 'asset_purged', "
+            "'consent_revoked', 'grant_created', 'grant_revoked', 'fusion_queried', "
+            "'speech_synthesized')",
+            name="ck_multimodal_audit_events_action",
+        ),
+        Index("ix_multimodal_audit_events_environment_time", "environment_id", "occurred_at"),
+        Index("ix_multimodal_audit_events_action_time", "action", "occurred_at"),
+    )
+
+
+class Robot(Base):
+    __tablename__ = "robots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    adapter_id: Mapped[str] = mapped_column(String(100))
+    external_id: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(255))
+    vendor: Mapped[str] = mapped_column(String(100))
+    model: Mapped[str] = mapped_column(String(100))
+    hardware_version: Mapped[str | None] = mapped_column(String(100))
+    firmware_version: Mapped[str | None] = mapped_column(String(100))
+    edge_runtime_version: Mapped[str | None] = mapped_column(String(100))
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id", ondelete="SET NULL"))
+    connection_state: Mapped[str] = mapped_column(String(30))
+    is_online: Mapped[bool] = mapped_column(Boolean, default=False)
+    motion_safety_state: Mapped[str] = mapped_column(String(50))
+    emergency_stop: Mapped[bool] = mapped_column(Boolean, default=True)
+    manual_takeover: Mapped[bool] = mapped_column(Boolean, default=False)
+    battery_percent: Mapped[float | None] = mapped_column(Float)
+    low_battery_percent: Mapped[float] = mapped_column(Float, default=15)
+    device_states: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    location: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metadata_summary: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("adapter_id", "external_id", name="uq_robots_adapter_external"),
+        CheckConstraint(
+            "connection_state IN ('disconnected', 'connecting', 'connected', 'degraded')",
+            name="ck_robots_connection_state",
+        ),
+        CheckConstraint(
+            "motion_safety_state IN ('normal', 'stopped', 'manual_takeover', "
+            "'limit_reached', 'stalled', 'over_current', 'tilt_detected', 'unknown')",
+            name="ck_robots_motion_safety_state",
+        ),
+        CheckConstraint(
+            "battery_percent IS NULL OR battery_percent BETWEEN 0 AND 100",
+            name="ck_robots_battery_range",
+        ),
+        Index("ix_robots_connection", "connection_state", "is_online"),
+    )
+
+    capabilities: Mapped[list["RobotCapabilityRecord"]] = relationship(
+        back_populates="robot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    state_snapshots: Mapped[list["RobotStateSnapshotRecord"]] = relationship(
+        back_populates="robot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    task_requests: Mapped[list["RobotTaskRequestRecord"]] = relationship(
+        back_populates="robot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class RobotCapabilityRecord(Base):
+    __tablename__ = "robot_capabilities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    robot_id: Mapped[str] = mapped_column(ForeignKey("robots.id", ondelete="CASCADE"))
+    capability: Mapped[str] = mapped_column(String(100))
+    schema_version: Mapped[str] = mapped_column(String(30), default="1.0")
+    verification_status: Mapped[str] = mapped_column(String(40), default="concept")
+    runtime_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    risk_level: Mapped[str] = mapped_column(String(30))
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=True)
+    requires_consents: Mapped[list[str]] = mapped_column(JSON, default=list)
+    min_battery_percent: Mapped[float] = mapped_column(Float, default=0)
+    input_schema: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    output_schema: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    safety_envelope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("robot_id", "capability", name="uq_robot_capabilities_capability"),
+        CheckConstraint(
+            "verification_status IN ('concept', 'specified', 'bench_verified', "
+            "'integration_verified', 'safety_approved')",
+            name="ck_robot_capabilities_verification",
+        ),
+        CheckConstraint(
+            "risk_level IN ('read_only', 'low_risk', 'medium_risk', 'high_risk')",
+            name="ck_robot_capabilities_risk",
+        ),
+        Index("ix_robot_capabilities_robot_enabled", "robot_id", "runtime_enabled"),
+    )
+
+    robot: Mapped[Robot] = relationship(back_populates="capabilities")
+
+
+class RobotStateSnapshotRecord(Base):
+    __tablename__ = "robot_state_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    robot_id: Mapped[str] = mapped_column(ForeignKey("robots.id", ondelete="CASCADE"))
+    connection_state: Mapped[str] = mapped_column(String(30))
+    is_online: Mapped[bool] = mapped_column(Boolean)
+    motion_safety_state: Mapped[str] = mapped_column(String(50))
+    emergency_stop: Mapped[bool] = mapped_column(Boolean)
+    manual_takeover: Mapped[bool] = mapped_column(Boolean)
+    battery_percent: Mapped[float | None] = mapped_column(Float)
+    device_states: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    location: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(50))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    schema_version: Mapped[str] = mapped_column(String(30), default="1.0")
+
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('firmware_reported', 'edge_observed', 'adapter_derived', 'mock')",
+            name="ck_robot_state_snapshots_source",
+        ),
+        Index("ix_robot_state_snapshots_robot_observed", "robot_id", "observed_at"),
+        Index("ix_robot_state_snapshots_safety", "robot_id", "motion_safety_state"),
+    )
+
+    robot: Mapped[Robot] = relationship(back_populates="state_snapshots")
+
+
+class RobotTaskRequestRecord(Base):
+    __tablename__ = "robot_task_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    robot_id: Mapped[str] = mapped_column(ForeignKey("robots.id", ondelete="CASCADE"))
+    capability: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(40))
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    requested_by: Mapped[str] = mapped_column(String(255))
+    origin_type: Mapped[str] = mapped_column(String(50))
+    task_id: Mapped[str | None] = mapped_column(String(36))
+    idempotency_key: Mapped[str | None] = mapped_column(String(100))
+    confirmed_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=True)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    timeout_seconds: Mapped[float] = mapped_column(Float)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("robot_id", "idempotency_key", name="uq_robot_task_idempotency"),
+        CheckConstraint(
+            "status IN ('created', 'awaiting_confirmation', 'rejected', 'submitted', "
+            "'accepted', 'running', 'waiting_result', 'succeeded', 'failed', "
+            "'timeout', 'cancelled', 'safe_stopped', 'unavailable')",
+            name="ck_robot_task_requests_status",
+        ),
+        CheckConstraint(
+            "origin_type IN ('user', 'task_system', 'active_perception', 'system')",
+            name="ck_robot_task_requests_origin",
+        ),
+        CheckConstraint("timeout_seconds > 0", name="ck_robot_task_requests_timeout"),
+        Index("ix_robot_task_requests_robot_status", "robot_id", "status"),
+        Index("ix_robot_task_requests_task", "task_id"),
+        Index("ix_robot_task_requests_correlation", "correlation_id"),
+    )
+
+    robot: Mapped[Robot] = relationship(back_populates="task_requests")
+    events: Mapped[list["RobotEventRecord"]] = relationship(
+        back_populates="task_request",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class RobotEventRecord(Base):
+    __tablename__ = "robot_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    robot_id: Mapped[str] = mapped_column(ForeignKey("robots.id", ondelete="CASCADE"))
+    task_request_id: Mapped[str | None] = mapped_column(
+        ForeignKey("robot_task_requests.id", ondelete="CASCADE")
+    )
+    event_type: Mapped[str] = mapped_column(String(60))
+    severity: Mapped[str] = mapped_column(String(20), default="info")
+    source: Mapped[str] = mapped_column(String(100))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    late_arrival: Mapped[bool] = mapped_column(Boolean, default=False)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('connection_changed', 'state_changed', 'safety_changed', "
+            "'task_accepted', 'task_running', 'task_succeeded', 'task_failed', "
+            "'task_cancelled', 'task_safe_stopped', 'task_unavailable')",
+            name="ck_robot_events_type",
+        ),
+        CheckConstraint(
+            "severity IN ('info', 'warning', 'critical')",
+            name="ck_robot_events_severity",
+        ),
+        Index("ix_robot_events_robot_occurred", "robot_id", "occurred_at"),
+        Index("ix_robot_events_request_occurred", "task_request_id", "occurred_at"),
+        Index("ix_robot_events_type_occurred", "event_type", "occurred_at"),
+    )
+
+    robot: Mapped[Robot] = relationship()
+    task_request: Mapped[RobotTaskRequestRecord | None] = relationship(back_populates="events")

@@ -11,6 +11,7 @@ from arvuno_core.persistence.automations import (
 from arvuno_core.persistence.exceptions import RepositoryError
 from arvuno_core.persistence.history import HistoryRepository
 from arvuno_core.persistence.memory import MemoryRepository
+from arvuno_core.persistence.multimodal import MultimodalRepository
 from arvuno_core.persistence.observations import (
     ObservationAttributeRepository,
     ObservationConsentRepository,
@@ -32,6 +33,7 @@ from arvuno_core.persistence.repositories import (
     ToolExecutionRepository,
     ToolRepository,
 )
+from arvuno_core.persistence.robots import RobotRepository
 from arvuno_core.persistence.spatial import (
     EntityRepository,
     EntitySpaceAssignmentRepository,
@@ -74,6 +76,8 @@ class SqlAlchemyUnitOfWork:
         self.planning: PlanningRepository | None = None
         self.proactive: ProactiveRepository | None = None
         self.perception: PerceptionRepository | None = None
+        self.multimodal: MultimodalRepository | None = None
+        self.robots: RobotRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -104,6 +108,8 @@ class SqlAlchemyUnitOfWork:
         self.planning = PlanningRepository(self._session)
         self.proactive = ProactiveRepository(self._session)
         self.perception = PerceptionRepository(self._session)
+        self.multimodal = MultimodalRepository(self._session)
+        self.robots = RobotRepository(self._session)
         return self
 
     def __exit__(
@@ -160,3 +166,5 @@ class SqlAlchemyUnitOfWork:
             self.planning = None
             self.proactive = None
             self.perception = None
+            self.multimodal = None
+            self.robots = None

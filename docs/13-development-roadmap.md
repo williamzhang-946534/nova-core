@@ -450,12 +450,18 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 
 本节与上方仓库历史 `Phase 0-10` 编号相互独立。长期路线使用 `ARS` 编号；历史验收报告不改名。
 
+当前推进边界：长期路线暂时先推进到第七部分 `ARS-06 Embodied Intelligence / 机器人接入`；第八部分 `ARS-07 Industrial Intelligence / 工业环境扩展` 暂停，不进入当前计划。这不关闭 `ARS-02` 至 `ARS-04` 已记录的验收缺口，机器人接入前仍必须完成独立架构和安全确认。
+
 | 长期阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | `ARS-01` Core Execution | 已完成 | 对应仓库 Phase 10 完成状态 |
 | `ARS-02` Spatial Environmental Intelligence | ARS-02.7 最终验收保持未完全通过；D1 Context v2 缺陷已修复并复验 | 设计见第 20 至 24 号文档；验收补充见第 25、26 号文档。Spatial Model、Observation Model、Observation Pipeline、State Estimation、空间查询 / AI 环境理解 / Web Console 已实现；Context v2 空间状态投影已与当前读模型一致。隐私删除端到端、目标规模压测、备份恢复、真实 ESPHome / ESP32 和真实 AI Provider 仍未完成验收 |
 | `ARS-03` World Memory | ARS-03 验收部分通过 / 未完全关闭 | Memory 分类、Service、检索、生命周期、用户偏好、时间理解、只读历史查询和 Agent 只读工具入口已实现并通过回归；语义检索、自动压缩、记忆图谱、多用户隔离和真实程序执行验收链路未实现。结果见第 28 号报告 |
-| `ARS-04` World Reasoning & Orchestration | ARS-04.4 工程实现完成，待验收 | Reasoning、Evidence、Hypothesis、Goal、Plan、Replanning、Proactive Intelligence、Active Perception、授权边界、API 草案和测试方案见第 29 号文档；ARS-04.1 已实现确定性 Evidence-based Reasoning Engine、证据 / 假设持久化、来源追溯、诊断 API 和迁移。ARS-04.2 已实现 Goal Compiler、确定性单设备 Planning Engine、计划验证 / 提交 / 确认、失败重规划和审计记录。ARS-04.3 已实现事件驱动的 Proactive Intelligence 基础闭环。ARS-04.4 已实现 Active Perception 决策、观测请求生命周期、隐私授权和 Mock Observer 闭环。真实 AI Planner / Proactive 评估器、Level 3 候选任务自动创建、Level 4 自主执行、多步与非设备计划和真实感知硬件仍未实现 |
+| `ARS-04` World Reasoning & Orchestration | ARS-04 验收部分通过 / 未完全关闭 | 设计与工程实现见第 29 号文档；验收结果见第 30 号报告。确定性 Reasoning、单设备 Goal / Planning、失败重规划、Proactive 基础治理和 Active Perception Mock 闭环已通过回归；AI / 模型 Planner 与评估器、多步与非设备计划、Level 3 / 4、Task System 感知集成、真实 Observer / 授权界面 / Provider 验收仍未实现 |
+| `ARS-05` Multimodal Perception | ARS-05.4 Mock / 按需架构条件通过 / 不关闭 | 设计见第 31 号文档；验收见第 32 号报告。按需图像 / OCR / 音频、Provider 抽象、Mock 视觉 / STT / TTS、Observation 映射、Fusion、隐私治理、物理删除、超时和语音 API / 前端状态机已通过隔离回归。真实摄像头 / 麦克风与真实模型、生产云端 Provider、真实浏览器语音端到端、独立后台唤醒词、持续分析和自动后台保留清理调度器未完成 |
+| `ARS-06` Embodied Intelligence | ARS-06.1 Mock Robot Adapter 实现完成 / 待用户验收；真实硬件接入仍受安全门槛限制 | 当前载体选定为自制桌面机器人，设计见第 34 号文档；第 33 号文档保留为商用机器人 / 通用 Adapter 参考。Robot 接口、Registry、Capability Schema、状态模型、任务请求状态机、事件、MockRobotAdapter、REST API 和持久化已实现；Web Console 最小状态页与 Agent 只读工具未实现。第一版不做轮式导航、机械臂、抓取或持续采集；全部能力默认 concept / disabled / 需确认，急停默认激活，机器人默认禁用；BOM、固件契约和安全实测未冻结，真实硬件不开放 |
+| `ARS-07` Industrial Intelligence | 暂停 / 不进入当前计划 | 工业环境扩展保留为未来方向；不提前实现工业 Adapter、协议接入或工业规则 |
+| `ARS-08` Distributed World Intelligence | 远期规划 / 暂缓 | 不进入当前计划，只保留长期方向 |
 
 ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation Pipeline、State Estimation、Environment Context v2、迁移与 API 草案、隐私删除、SQLite 性能、测试策略和验收标准。用户确认设计后，先执行 `ARS-02.1 Spatial Model 工程实现`，不得直接跳到观测管线或状态估计。
 
@@ -483,6 +489,8 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 
 2026-11-04，`ARS-04.0 World Reasoning & Orchestration` 架构设计完成并输出 `docs/29-ars04-world-reasoning-orchestration-design.md`，当前状态为等待用户确认。设计冻结 Reasoning / Planning / Task System / Tool Executor / Proactive Intelligence / Active Perception 的职责边界，定义 Evidence、Hypothesis、Goal、Plan、Replanning、Proactive Suggestion 和 Observation Request 数据契约，并给出 API、授权、隐私、测试和实施切分。该记录不表示数据模型、迁移、Service、API、Agent 集成或任何 ARS-04 工程能力已经实现。
 
+2026-11-06，`ARS-05.3 语音交互体验` 的按需链路工程实现完成，待用户验收。后端复用 MultimodalService 授权、私有媒体存储、STT invocation、模型版本追踪和敏感音频清理，只在 Provider 显式标记 instruction 后进入 Agent Runtime；任务确认必须使用独立 task ID + token 接口。独立唤醒词模块只处理单次转写，前端不常驻监听。前端提供 `idle / listening / recognizing / executing / speaking` 状态、显式授权配置、按需 WAV 录音上传和 TTS 播放。当前默认 STT / TTS 仍是本地 Mock，真实模型、真实麦克风硬件验收、后台唤醒词和 ARS-05.4 最终验收未完成。
+
 2026-11-04，`ARS-04.1 Evidence-based Reasoning Engine` 工程实现完成，待用户验收。该子阶段新增 Reasoning Session、Evidence Bundle / Item、Hypothesis 与证据关系表及 Alembic 迁移；Reasoning Service 可读取 World Model 当前估计、Observation、环境事件、任务与 Memory，生成结构化 Evidence Bundle、确定性规则结论、非因果时间相关性、显式验证原因、数据质量和未知信息，并持久化诊断记录。API 支持诊断、会话、证据、假设和原始来源查询；推理过程不修改 World Model observed 状态，不把模型结论写成事实或 Memory。历史回放、已验证原因、错误数据、来源追溯和 World Model 不可变性已覆盖测试。后端全量回归 278 项通过，Ruff 与 Alembic head 检查通过。AI 候选生成器保持 `not_configured`；Goal、Plan、Replanning、Proactive Intelligence、Active Perception、工具执行和设备控制未实现。
 
 2026-11-05，`ARS-04.2 Planning Engine 与 Goal Compiler` 工程实现完成，待用户验收。该子阶段新增 Planning Session、Goal、Plan、Plan Step 和 Replanning Record 表及 Alembic 迁移；Goal Compiler 可将自然语言目标解析为含目标空间、期望状态、约束、优先级、完成条件、澄清项和未知项的结构化目标，并在缺少可操作设备时短路返回未解决状态。Planning Engine 基于当前 World Model 投影生成确定性的“读取状态、执行控制、验证结果”单设备计划，验证工具可用性、在线状态、依赖关系、风险、禁止条件和自动重试安全；系统级风险上限保持 `low_risk`，授权上限不会被历史相似任务扩大。计划生命周期覆盖 candidate、confirmed、plan、approve、submit 和 replan；需要确认的计划经由 Task System 传递 `requires_confirmation` 到 Tool Executor，Planner 不直接操作设备。离线设备预检、模糊目标短路、授权上限、依赖失败、执行失败、结果不满足和版本保留的重规划审计已覆盖测试；后端全量回归 288 项通过，Ruff 与 Alembic 单 head 检查通过。AI / 模型 Planner、Proactive Intelligence、Active Perception、多步计划和非设备计划仍未实现。
@@ -490,3 +498,15 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 2026-11-05，`ARS-04.3 Proactive Intelligence` 工程实现完成，待用户验收。该子阶段新增 Proactive Suggestion 表和 Alembic 迁移，事件总线接入传感器异常、设备不可用和任务失败触发；实现候选评估、优先级、证据引用、去重、冷却、按用户本地时区判断的静默时间、小时 / 日通知上限、用户压制偏好、接受 / 打开 / 忽略 / 反馈、删除、过期清理和质量统计。Level 1 仅记录，Level 2 记录并通知，运行时最大自主级别保持 2；Proactive Service 不直接执行设备动作，不监听自身产生的事件，不把一次 motion 读数推断为离家或异常，用户忽略建议也不会提高提醒频率。后端全量回归 312 项通过，Ruff lint / format 和 Alembic 单 head 检查通过。Active Perception、真实 AI Proactive 评估器、趋势 / 推理假设驱动的候选生成、Level 3 接受后自动创建候选任务、Level 4 有限自主执行、完整前端管理页和真实 Provider 验收仍未实现。
 
 2026-11-05，`ARS-04.4 Active Perception Decision` 工程实现完成，待用户验收。该子阶段新增 Active Perception Request 表和 Alembic 迁移，实现缺口评估、已有观测 / 当前估计覆盖检查、来源可信度与成本比较、敏感属性授权、观测请求生命周期、拒绝 / 删除、过期清理和带认证的 API。Mock Observer 可验证只读观测闭环：结果必须通过目标、空间、来源和属性校验并写入真实 Observation，随后触发 State Estimation 重建和 Reasoning 重跑；没有 Observer 或 Observer 返回空时请求标记 unavailable，不伪造观测结果。应用默认 `perception_observer = None`；本阶段不做自主持续采集、摄像头 / 麦克风 / 机器人接入、硬件导航或设备控制。后端全量回归 323 项通过，Ruff lint / format 和 Alembic 单 head `a7d4f83c1092` 检查通过。Task System / Tool Executor 集成、真实 Observer、AI 感知评估器和真实隐私授权流程验收仍未实现。
+
+2026-11-06，`ARS-04.5 最终验收` 完成并输出 `docs/30-ars04-acceptance-report.md`。验收发现 `StateEstimationService.list()` 直接使用系统时间判断 freshness，而验收固定时钟无法注入；已补上默认行为不变的可选时间注入并复验。后端全量回归 323 项通过，ARS-04 专项 50 项通过，Ruff lint / format、Alembic 单 head 与隔离空库升级、前端 typecheck / build / format 均通过。最终结论为**部分通过 / 未完全通过**：事实 / 假设分离、证据来源、Planning / Task 边界、失败重规划、Proactive 治理、授权上限、Active Perception 缺口识别和敏感权限通过；AI Planner / 评估器、多步与非设备计划、Level 3 / 4、感知执行集成、真实硬件、真实授权界面、ARS-04 前端管理和真实 Provider 端到端未完成。ARS-04 不关闭。
+
+2026-11-06，`ARS-05.0 多模态架构设计` 完成并输出 `docs/31-ars05-multimodal-perception-design.md`，当前状态为等待用户确认。设计冻结按需 Image / Video Frame / Voice / STT / TTS / Audio Event、Media Asset、Provider Invocation、Extraction Result、Observation Link、Multimodal Consent、有限 Fusion、保留清理和物理删除边界；所有环境事实仍必须通过既有 Observation Policy、Observation Pipeline 和 State Estimation。本文不表示任何数据模型、迁移、Service、API、Provider、前端或真实硬件能力已经实现。
+
+2026-11-06，`ARS-05.4 最终验收` 完成并输出 `docs/32-ars05-acceptance-report.md`。验收发现 `timeout_ms` 未实际限制 Provider 调用，已为 Vision / OCR / STT / Audio Event / TTS 增加统一超时、`timeout` 调用状态、媒体清理和会话失败；外层错误处理不再把超时改写成普通失败，并补充 Provider 崩溃测试。ARS-05 专项 28 项通过，后端全量回归 351 项通过，Ruff、隔离空库升级到 `e5f1a2b3c4d5`、前端 typecheck / build / format 均通过。最终结论为**Mock / 按需架构条件通过**：候选语义、来源追踪、Fusion、授权、撤销、敏感删除、本地边界、故障和超时通过；真实摄像头 / 麦克风、真实模型、生产云端 Provider、真实浏览器语音端到端、后台唤醒词和自动保留清理调度器未完成。ARS-05 不关闭。
+
+2026-11-06，`ARS-06.0 智元机器人接入架构设计` 完成并输出 `docs/33-ars06-embodied-intelligence-design.md`。该文档保留为商用机器人 / 通用 Robot Adapter 参考；设计明确 Arvuno Core 独立承载 World Model、Memory、Reasoning、Planning、Permission、Task System 与 Tool Executor，实时运动、碰撞保护与急停始终归属机器人本体控制系统。
+
+2026-11-06，机器人载体选定为**自制桌面机器人**，ARS-06.0 补充设计完成并输出 `docs/34-ars06-custom-desktop-robot-design.md`，当前状态为等待用户安全确认。该设计将第一版范围收缩为固定桌面载体、受限 pan / tilt 姿态、按需图像、单次语音输入、TTS 播报和状态上报；不实现轮式导航、机械臂、抓取、持续视频监控、常驻麦克风采集或 Level 4 自主执行。自制硬件没有厂商安全兜底，后续必须先冻结 BOM、机械 / 电气设计、固件接口契约、硬件停止、限位、看门狗和失效安全测试，再逐步开放能力；所有能力默认 disabled。
+
+2026-11-09，`ARS-06.1 Robot Adapter 与 Mock Robot` 工程实现完成，待用户验收。该子阶段新增 robots、capabilities、状态快照、事件和任务请求表及 Alembic 迁移 `a6b2c3d4e5f6`；实现 RobotAdapter 接口、Robot Registry、Capability Model、状态 / 位置模型、任务请求状态机、事件、MockRobotAdapter、连接与断线处理和带认证的 REST API。Mock 支持移动成功、导航失败、定位丢失、低电量、任务取消、设备离线、人工接管、急停和超时；全部能力默认 concept / disabled / 需确认，急停默认激活，机器人默认禁用。事件保存前统一将外部 robot ID 归一化为内部 ID；架构边界测试确认 Agent Runtime / Planner 不导入 robots 模块。后端聚焦回归 29 项通过。Web Console 最小状态页和 Agent 只读机器人工具尚未实现；本阶段不包含真实机器人控制代码。

@@ -103,6 +103,17 @@ def test_agent_runtime_stays_behind_provider_task_and_catalog_ports() -> None:
         )
 
 
+def test_agent_runtime_and_planner_do_not_import_robot_hardware_boundary() -> None:
+    for directory in ("agent_runtime", "planning"):
+        root = PACKAGE_ROOT / directory
+        assert list(root.rglob("*.py"))
+        for path in root.rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            assert "arvuno_core.robots" not in source, (
+                f"{path} imports the robot adapter boundary directly"
+            )
+
+
 def test_automation_stays_behind_event_task_and_persistence_ports() -> None:
     automation_root = PACKAGE_ROOT / "automation"
     assert list(automation_root.rglob("*.py"))

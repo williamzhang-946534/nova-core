@@ -36,12 +36,14 @@ from arvuno_core.api.memory import (
 from arvuno_core.api.memory import (
     router as memory_router,
 )
+from arvuno_core.api.multimodal import router as multimodal_router
 from arvuno_core.api.observations import router as observations_router
 from arvuno_core.api.observations import source_router as observation_sources_router
 from arvuno_core.api.perception import router as perception_router
 from arvuno_core.api.planning import router as planning_router
 from arvuno_core.api.proactive import router as proactive_router
 from arvuno_core.api.reasoning import router as reasoning_router
+from arvuno_core.api.robots import router as robots_router
 from arvuno_core.api.settings import router as settings_router
 from arvuno_core.api.spaces import device_router as space_device_router
 from arvuno_core.api.spaces import router as spaces_router
@@ -49,6 +51,7 @@ from arvuno_core.api.state_estimates import router as state_estimates_router
 from arvuno_core.api.system import router as system_router
 from arvuno_core.api.tasks import router as tasks_router
 from arvuno_core.api.tools import router as tools_router
+from arvuno_core.api.voice import router as voice_router
 from arvuno_core.automation.notifications import NotificationService
 from arvuno_core.automation.service import AutomationService
 from arvuno_core.config import Settings, get_settings
@@ -74,6 +77,7 @@ from arvuno_core.events.service import DeviceEventService
 from arvuno_core.history.service import HistoryService
 from arvuno_core.logging_config import correlation_id_var
 from arvuno_core.memory.service import MemoryService
+from arvuno_core.multimodal.service import MultimodalService
 from arvuno_core.observations.pipeline import ObservationPipeline
 from arvuno_core.observations.service import ObservationService
 from arvuno_core.perception.service import ActivePerceptionService
@@ -84,6 +88,9 @@ from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from arvuno_core.planning.service import PlanningService
 from arvuno_core.proactive.service import ProactiveService
 from arvuno_core.reasoning.service import ReasoningService
+from arvuno_core.robots.mock import MockRobotAdapter
+from arvuno_core.robots.registry import RobotRegistry
+from arvuno_core.robots.service import RobotApplicationService
 from arvuno_core.schemas.memory import MemoryRetrievalRequest
 from arvuno_core.spatial.service import SpatialService
 from arvuno_core.tasks.service import TaskService
@@ -168,6 +175,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.state_estimation_service.rebuild()
         except Exception:
             logger.exception("startup_state_estimation_rebuild_failed")
+        try:
+            await app.state.robot_service.sync_robot(
+                app.state.mock_robot_adapter,
+                app.state.mock_robot_adapter.external_id,
+            )
+        except Exception:
+            logger.exception("mock_robot_projection_sync_failed")
         if getattr(app.state, "start_device_polling", False):
             runtime = await _start_device_polling(app, device_registry)
             app.state.device_polling_runtime = runtime
@@ -175,6 +189,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         environment_context = app.state.environment_context
         await environment_context.initialize()
         await environment_context.synchronize_with_registry()
+    if getattr(app.state, "initialize_tool_runtime", False):
+        await app.state.multimodal_service.initialize_catalog()
     yield
     runtime = getattr(app.state, "device_polling_runtime", None)
     if runtime is not None:
@@ -244,6 +260,11 @@ def create_app(
     app.state.spatial_service = spatial_service
     observation_service = ObservationService(unit_of_work_factory)
     app.state.observation_service = observation_service
+    app.state.multimodal_service = MultimodalService(
+        unit_of_work_factory,
+        observation_service,
+        app_settings,
+    )
     state_estimation_service = StateEstimationService(
         unit_of_work_factory,
         environment_name=app_settings.default_environment_name,
@@ -507,6 +528,13 @@ def create_app(
         environment_name=app_settings.default_environment_name,
     )
     app.state.perception_observer = None
+    app.state.mock_robot_adapter = MockRobotAdapter()
+    app.state.robot_registry = RobotRegistry(unit_of_work_factory)
+    app.state.robot_service = RobotApplicationService(
+        app.state.robot_registry,
+        {adapter.adapter_id: adapter for adapter in (app.state.mock_robot_adapter,)},
+        unit_of_work_factory=unit_of_work_factory,
+    )
     event_bus.subscribe(
         app.state.proactive_service.handle_event,
         event_types={
@@ -592,13 +620,16 @@ def create_app(
     app.include_router(tools_router)
     app.include_router(tasks_router)
     app.include_router(agent_router)
+    app.include_router(voice_router)
     app.include_router(settings_router)
     app.include_router(automations_router)
     app.include_router(memory_router)
     app.include_router(memory_retrieval_router)
     app.include_router(memory_preference_router)
+    app.include_router(multimodal_router)
     app.include_router(history_router)
     app.include_router(reasoning_router)
+    app.include_router(robots_router)
     app.include_router(planning_router)
     app.include_router(proactive_router)
     app.include_router(perception_router)
