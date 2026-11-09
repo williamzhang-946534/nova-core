@@ -273,7 +273,10 @@ class ObservationService:
             policy = uow.observation_attributes.latest_policy(definition.attribute)
             if policy is not None:
                 if source.source_type not in policy.allowed_source_types:
-                    raise ObservationError(code="OBSERVATION_SOURCE_TYPE_NOT_ALLOWED")
+                    raise ObservationError(
+                        code="OBSERVATION_SOURCE_TYPE_NOT_ALLOWED",
+                        message="The observation source type is not allowed for this attribute.",
+                    )
                 if policy.requires_consent:
                     consent_subject_type = subject_type or "entity"
                     consent_subject_id = subject_id or entity_id

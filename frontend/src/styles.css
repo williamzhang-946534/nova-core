@@ -263,9 +263,20 @@ body {
 
 .chat-input {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: end;
+}
+
+.voice-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.voice-settings > .ant-space {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
 }
 
 .expanded-json {
@@ -342,6 +353,10 @@ body {
   }
 
   .chat-input {
+    grid-template-columns: 1fr;
+  }
+
+  .voice-settings {
     grid-template-columns: 1fr;
   }
 

@@ -138,6 +138,11 @@ def normalize(
             return NormalizationResult(raw_value, None)
         return NormalizationResult(issues=(_issue("normalization_failed", "invalid"),))
 
+    if attribute in {"scene_label", "object_presence", "audio_event"} and value_type == "json":
+        if isinstance(raw_value, dict):
+            return NormalizationResult(raw_value, None)
+        return NormalizationResult(issues=(_issue("normalization_failed", "invalid"),))
+
     return NormalizationResult(issues=(_issue("normalization_failed", "warning"),))
 
 
