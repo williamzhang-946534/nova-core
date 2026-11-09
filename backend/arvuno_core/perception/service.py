@@ -34,6 +34,7 @@ DEFAULT_SOURCE_COSTS: dict[str, float] = {
     "derived_job": 4.0,
     "future_external": 10.0,
     "vision": 10.0,
+    "robot_mobile": 8.0,
 }
 
 
@@ -455,6 +456,7 @@ class ActivePerceptionService:
                 allowed_source_types=(policy.allowed_source_types if policy is not None else None),
                 min_trust_level=request.min_trust_level,
                 max_cost_score=request.max_cost_score,
+                preferred_source_type=request.preferred_source_type,
             )
 
             existing = repository.active_for_gap(
@@ -575,12 +577,15 @@ class ActivePerceptionService:
         allowed_source_types: list[str] | None,
         min_trust_level: float,
         max_cost_score: float,
+        preferred_source_type: str | None = None,
     ) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
         for source in sources:
             if source.status != "active":
                 continue
             if allowed_source_types is not None and source.source_type not in allowed_source_types:
+                continue
+            if preferred_source_type is not None and source.source_type != preferred_source_type:
                 continue
             if source.trust_level < min_trust_level:
                 continue

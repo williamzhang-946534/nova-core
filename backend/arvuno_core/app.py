@@ -43,6 +43,7 @@ from arvuno_core.api.perception import router as perception_router
 from arvuno_core.api.planning import router as planning_router
 from arvuno_core.api.proactive import router as proactive_router
 from arvuno_core.api.reasoning import router as reasoning_router
+from arvuno_core.api.robot_perception import router as robot_perception_router
 from arvuno_core.api.robots import router as robots_router
 from arvuno_core.api.settings import router as settings_router
 from arvuno_core.api.spaces import device_router as space_device_router
@@ -80,6 +81,7 @@ from arvuno_core.memory.service import MemoryService
 from arvuno_core.multimodal.service import MultimodalService
 from arvuno_core.observations.pipeline import ObservationPipeline
 from arvuno_core.observations.service import ObservationService
+from arvuno_core.perception.robot_mobile import RobotMobilePerceptionService
 from arvuno_core.perception.service import ActivePerceptionService
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.provider_logs import SqlProviderLogStore
@@ -535,6 +537,13 @@ def create_app(
         {adapter.adapter_id: adapter for adapter in (app.state.mock_robot_adapter,)},
         unit_of_work_factory=unit_of_work_factory,
     )
+    app.state.robot_mobile_perception_service = RobotMobilePerceptionService(
+        app.state.perception_service,
+        app.state.robot_service,
+        observation_service,
+        unit_of_work_factory,
+        environment_name=app_settings.default_environment_name,
+    )
     event_bus.subscribe(
         app.state.proactive_service.handle_event,
         event_types={
@@ -630,6 +639,7 @@ def create_app(
     app.include_router(history_router)
     app.include_router(reasoning_router)
     app.include_router(robots_router)
+    app.include_router(robot_perception_router)
     app.include_router(planning_router)
     app.include_router(proactive_router)
     app.include_router(perception_router)

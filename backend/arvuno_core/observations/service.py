@@ -170,6 +170,7 @@ class ObservationService:
             "derived_job",
             "vision",
             "future_external",
+            "robot_mobile",
         }:
             raise ObservationError(code="OBSERVATION_SOURCE_TYPE_INVALID")
         if status not in {"active", "paused", "unavailable", "revoked"}:

@@ -667,6 +667,7 @@ EXPECTED_COLUMNS = {
         "fulfilled_by_id",
         "follow_up_reasoning_session_id",
         "unavailable_reason",
+        "execution_trace",
         "created_at",
         "updated_at",
         "expires_at",

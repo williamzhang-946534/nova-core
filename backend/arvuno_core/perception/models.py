@@ -57,6 +57,7 @@ class ActivePerceptionRequestView(BaseModel):
     fulfilled_by_type: str | None = None
     fulfilled_by_id: str | None = None
     follow_up_reasoning_session_id: str | None = None
+    execution_trace: dict[str, Any] | None = None
     unavailable_reason: str | None = None
     created_at: datetime
     updated_at: datetime

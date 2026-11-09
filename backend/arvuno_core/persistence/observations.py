@@ -82,7 +82,7 @@ class ObservationAttributeRepository:
             return self._session.scalars(
                 select(ObservationAttributePolicy)
                 .where(ObservationAttributePolicy.attribute == attribute)
-                .order_by(ObservationAttributePolicy.created_at.desc())
+                .order_by(func.julianday(ObservationAttributePolicy.created_at).desc())
                 .limit(1)
             ).first()
         except SQLAlchemyError as exc:

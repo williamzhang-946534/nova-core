@@ -185,6 +185,7 @@ class MockRobotAdapter:
 
     def set_localization_lost(self, *, lost: bool = True) -> None:
         self._localization_lost = lost
+        self._location.localization_state = "lost" if lost else "known"
 
     def set_capability(
         self,

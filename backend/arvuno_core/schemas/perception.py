@@ -11,6 +11,7 @@ class ActivePerceptionEvaluateRequest(BaseModel):
     space_id: str | None = Field(default=None, min_length=1, max_length=36)
     entity_id: str | None = Field(default=None, min_length=1, max_length=36)
     attribute: str = Field(min_length=1, max_length=50)
+    preferred_source_type: str | None = Field(default=None, max_length=50)
     gap_type: Literal[
         "space_coverage",
         "time_coverage",
@@ -32,6 +33,17 @@ class ActivePerceptionAuthorizeRequest(BaseModel):
     authorization_seconds: int = Field(default=3600, ge=60, le=86400)
 
 
+class RobotMobilePerceptionAuthorizeRequest(BaseModel):
+    confirmed_navigation: bool
+    confirmed_camera_capture: bool
+    authorization_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
+class RobotMobilePerceptionEvaluateRequest(BaseModel):
+    request: ActivePerceptionEvaluateRequest
+    robot_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+
 class ActivePerceptionRejectRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 
@@ -40,4 +52,6 @@ __all__ = [
     "ActivePerceptionAuthorizeRequest",
     "ActivePerceptionEvaluateRequest",
     "ActivePerceptionRejectRequest",
+    "RobotMobilePerceptionAuthorizeRequest",
+    "RobotMobilePerceptionEvaluateRequest",
 ]

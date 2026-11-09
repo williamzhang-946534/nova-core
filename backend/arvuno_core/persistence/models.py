@@ -1701,6 +1701,7 @@ class ActivePerceptionRequest(Base):
     follow_up_reasoning_session_id: Mapped[str | None] = mapped_column(
         ForeignKey("reasoning_sessions.id", ondelete="SET NULL")
     )
+    execution_trace: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     unavailable_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
