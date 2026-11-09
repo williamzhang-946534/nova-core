@@ -2,6 +2,7 @@
 
 版本：1.1  
 当前基线：仓库 `Phase 10` 已完成验收；长期路线处于 `ARS-02.0 设计完成、待用户确认`。  
+当前推进边界：长期路线先推进到第七部分 `ARS-06 Embodied Intelligence / 机器人接入`；第八部分 `ARS-07 Industrial Intelligence / 工业环境扩展` 及其后的工业方向暂停，不进入当前计划。  
 用途：作为 Codex 后续分阶段开发的提示词库。
 
 ---
@@ -26,10 +27,10 @@
 | ARS-02 | Spatial Environmental Intelligence（空间环境智能） | ARS-02.0 设计完成，待确认 |
 | ARS-03 | World Memory（世界记忆）                         | 待开发               |
 | ARS-04 | World Reasoning & Orchestration（世界推理与任务编排） | 待开发               |
-| ARS-05 | Multimodal Perception（多模态感知）               | 待开发               |
-| ARS-06 | Embodied Intelligence（具身智能）                | 待开发               |
-| ARS-07 | Industrial Intelligence（工业智能）              | 待开发               |
-| ARS-08 | Distributed World Intelligence（分布式世界智能）    | 远期规划              |
+| ARS-05 | Multimodal Perception（多模态感知）               | ARS-05.0 设计完成，待确认 |
+| ARS-06 | Embodied Intelligence（具身智能）                | 当前推进边界，待开发        |
+| ARS-07 | Industrial Intelligence（工业智能）              | 暂停，不进入当前计划        |
+| ARS-08 | Distributed World Intelligence（分布式世界智能）    | 远期规划，暂缓           |
 
 阶段内里程碑使用完整编号，例如 `ARS-02.0`、`ARS-02.1`。
 
@@ -546,13 +547,12 @@ Observation 不等于 Event。
 
 ## ARS-02.5：空间查询、AI 环境理解与 Web Console
 
+
 现在开始 ARS-02 的用户功能集成。
 
 ### 一、后端 API
 
 按已确认的 API 设计实现：
-
-
 
 - 空间层级查询。
 - 房间详情。
@@ -561,7 +561,6 @@ Observation 不等于 Event。
 - 设备空间归属查询。
 - 状态来源查询。
 - 感知盲区查询。
-
 
 只读查询必须使用 Tool Registry 中的只读工具。
 
@@ -709,8 +708,6 @@ Mock、HA Demo 和真实 ESPHome 结果必须分别记录。
 6. 复杂现实世界任务。
 7. 不支持的请求。
 
-
-
 ### 二、处理方式
 
 普通数学、历史、科学和日常知识问题可以由模型直接回答。
@@ -834,14 +831,10 @@ Observation History 是现实数据记录，Memory 是经过筛选和组织的�
 - Observation History 负责保存可追溯观测。
 - Event History 负责保存重要事件。
 - Task History 负责保存任务执行过程。
-
-
 - Memory 负责形成有价值的长期知识。
 - Conversation History 负责保存对话过程。
 
 不能将这些表重复保存同一份信息而不明确职责。
-
-
 
 ### 三、记忆生命周期
 
@@ -931,8 +924,6 @@ AI 推断不得自动成为永久事实。
 3. 设备历史查询。
 4. 环境快照。
 5. 快照差异。
-
-
 6. 趋势统计。
 7. 历史事件关联。
 8. 任务与环境变化关联。
@@ -1177,6 +1168,8 @@ Arvuno 必须能够判断当前问题还缺少哪些信息、确定需要补充�
 
 # 第六部分：ARS-05 — Multimodal Perception
 
+状态：`ARS-05.0 多模态架构设计` 已完成，输出 `docs/31-ars05-multimodal-perception-design.md`，等待用户确认；工程实现尚未开始。
+
 目标：让 Arvuno 获得图像、视觉、语音和音频等感知能力。本阶段不开发机器人本体导航和物理控制。
 
 ## ARS-05.0：多模态架构设计
@@ -1262,6 +1255,8 @@ Arvuno 必须能够判断当前问题还缺少哪些信息、确定需要补充�
 7. 支持敏感数据删除。
 8. 支持用户查看当前启用的感知能力。
 9. 支持撤销授权。
+
+
 10. 支持敏感功能的审计记录。
 
 完成后停止。
@@ -1279,6 +1274,7 @@ Arvuno 必须能够判断当前问题还缺少哪些信息、确定需要补充�
 不要因为实现语音，就默认打开持续麦克风采集。
 
 必须区分待机、监听唤醒、语音输入、识别处理中、正在执行和正在播报。
+
 
 对用户清晰展示麦克风状态。
 
@@ -1298,9 +1294,9 @@ Arvuno 必须能够判断当前问题还缺少哪些信息、确定需要补充�
 
 # 第七部分：ARS-06 — Embodied Intelligence
 
+状态：当前长期路线的推进边界；进入实现前仍必须先通过 ARS-06.0 独立安全与架构确认。
+
 目标：将智元机器人接入 Arvuno，使它成为移动感知、语音交互和现实任务执行终端。
-
-
 
 智元机器人是 Arvuno 的身体和重要入口，不是唯一的大脑。Arvuno Core 应该能够独立运行，即使机器人离线也不能影响家庭环境模型和其他设备管理。
 
@@ -1323,7 +1319,6 @@ Robot Adapter 负责机器人连接、状态获取、高层能力调用、感知
 Arvuno 不允许绕过机器人本体安全系统。
 
 ### 二、设计 Robot Capability Model
-
 
 至少研究：
 
@@ -1470,6 +1465,8 @@ Arvuno：
 ---
 
 # 第八部分：ARS-07 — Industrial Intelligence
+
+状态：已暂停，不进入当前计划；保留为未来方向，不得在 ARS-06 前提前实现。
 
 目标：让 Arvuno 从家庭环境扩展到工厂环境。
 
@@ -1748,6 +1745,8 @@ Mock 不能冒充真实环境。
 | ARS-06 | Embodied Intelligence              | 具身智能       | Robot Adapter、Robot Capability Model、Mobile Perception                             |
 | ARS-07 | Industrial Intelligence            | 工业智能       | Industrial Ontology、Industrial Adapter、Industrial Reasoning                        |
 | ARS-08 | Distributed World Intelligence     | 分布式世界智能    | Node Identity、Trust、Synchronization、Delegation                                     |
+
+当前推进边界：路线暂时只推进到第七部分 ARS-06；第八部分 ARS-07 工业环境扩展暂停，ARS-08 及更远方向继续保持远期规划。
 
 跨阶段能力：
 
