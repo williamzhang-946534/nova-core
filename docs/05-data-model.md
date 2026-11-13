@@ -15,6 +15,10 @@
 11. 不引入向量数据库，长期记忆先用结构化字段和关键词/时间查询。
 12. 业务逻辑不直接依赖 SQLite 特有能力。
 
+## 当前模型状态
+
+当前数据库共 70 张表，Alembic head 为 `9c0d1e2f3a4b`。本轮新增 `memory_procedure_versions.tool_name` 绑定列与索引 `ix_memory_procedure_versions_tool_status`，用于工具执行自动 Procedure Validation 关联。Privacy Erasure 编排不新增表，复用既有审计与删除边界。迁移在隔离空库上验证通过。
+
 ## ER 总览
 
 ```mermaid

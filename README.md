@@ -2,7 +2,7 @@
 
 Arvuno Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **Phase 10 历史验收已完成、REPAIR-01 维护修复待用户复核** 状态。Phase 10 的真实 DeepSeek 冒烟、真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页复核和移动端检查保留为历史结果，详见 [Phase 10 验收报告](docs/16-phase10-acceptance-report.md)。当前代码还包含 Memory、状态估计与历史查询、多模态按需处理、统一数据保留调度、设备可用性状态转换、带订阅者隔离的 Event Bus、任务恢复、最小化 Provider Log、Robot Profile 与能力治理、Mock 桌面机器人安全链路、机器人管理页，以及多模态媒体备份/恢复清单。真实机器人物理执行和 `mobile_robot` 仍被锁定；ARS-02 至 ARS-06 均未关闭。
+当前项目处于 **Phase 10 历史验收已完成、REPAIR-01 维护修复与软件能力补齐待用户复核** 状态。Phase 10 的真实 DeepSeek 冒烟、真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页复核和移动端检查保留为历史结果，详见 [Phase 10 验收报告](docs/16-phase10-acceptance-report.md)。当前代码还包含 Memory（压缩、知识提炼、工具执行自动 Procedure Validation）、状态估计与历史查询、Reasoning AI 候选生成、多步 Planning、Proactive L3、Active Perception 受控集成、多模态按需处理与 Provider 契约、统一数据保留调度、Privacy Erasure 编排、设备可用性状态转换、带订阅者隔离的 Event Bus、任务恢复、最小化 Provider Log、Robot Profile 与能力治理、Mock 桌面机器人安全链路、机器人固件协议契约与 Simulator、机器人管理页、多模态媒体备份/恢复清单，以及 Retention/History/State Estimates/Reasoning/Planning/Proactive/Active Perception/Multimodal 管理页面。真实机器人物理执行和 `mobile_robot` 仍被锁定；ARS-02 至 ARS-06 均未关闭。最新软件交付边界与测试结果见 [39-software-delivery-acceptance-report.md](docs/39-software-delivery-acceptance-report.md)。
 
 ## 开发环境与常用命令
 

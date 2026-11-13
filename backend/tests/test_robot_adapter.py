@@ -467,7 +467,7 @@ def test_robot_api_exposes_mock_but_stays_safe_by_default(tmp_path: Path) -> Non
             robots = client.get("/api/robots", headers=HEADERS)
             assert robots.status_code == 200
             payload = robots.json()[0]["data"]
-            assert payload["adapter_id"] == "mock_robot"
+            assert payload["adapter_id"] == "desktop_firmware_simulator"
             assert payload["is_enabled"] is False
             assert payload["emergency_stop"] is True
 

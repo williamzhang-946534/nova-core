@@ -19,6 +19,7 @@ class ArvunoEventType(StrEnum):
     ROBOT_STATE_CHANGED = "robot_state_changed"
     ROBOT_SAFETY_CHANGED = "robot_safety_changed"
     ROBOT_TASK_UPDATED = "robot_task_updated"
+    PRIVACY_ERASURE_COMPLETED = "privacy_erasure_completed"
 
 
 class ArvunoEventSource(StrEnum):
@@ -154,6 +155,19 @@ class RobotTaskUpdatedPayload(BaseModel):
     error_code: str | None = Field(default=None, min_length=1, max_length=100)
 
 
+class PrivacyErasureCompletedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner_id: str = Field(min_length=1, max_length=255)
+    memories_deleted: int
+    preferences_deleted: int
+    media_assets_deleted: int
+    conversations_deleted: int
+    messages_deleted: int
+    provider_logs_deleted: int
+    audit_records_preserved: int
+
+
 EventPayload = (
     DeviceStateChangedPayload
     | SensorUpdatedPayload
@@ -167,6 +181,7 @@ EventPayload = (
     | RobotStateChangedPayload
     | RobotSafetyChangedPayload
     | RobotTaskUpdatedPayload
+    | PrivacyErasureCompletedPayload
 )
 
 _PAYLOAD_TYPES: dict[ArvunoEventType, type[EventPayload]] = {
@@ -182,6 +197,7 @@ _PAYLOAD_TYPES: dict[ArvunoEventType, type[EventPayload]] = {
     ArvunoEventType.ROBOT_STATE_CHANGED: RobotStateChangedPayload,
     ArvunoEventType.ROBOT_SAFETY_CHANGED: RobotSafetyChangedPayload,
     ArvunoEventType.ROBOT_TASK_UPDATED: RobotTaskUpdatedPayload,
+    ArvunoEventType.PRIVACY_ERASURE_COMPLETED: PrivacyErasureCompletedPayload,
 }
 
 UuidString = Annotated[str, Field(min_length=36, max_length=36)]

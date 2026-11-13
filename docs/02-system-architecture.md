@@ -1,5 +1,9 @@
 # 02. 系统架构
 
+## 当前状态
+
+本轮软件能力补齐后，架构分层和模块化单体形态保持不变。新增的 Privacy Erasure 编排、Reasoning AI 候选生成、多步 Planning、Proactive L3、Active Perception 受控工具、Multimodal Provider 契约、Robot 固件协议 Simulator 和工具执行自动 Procedure Validation 全部沿用现有 API → Service → Repository/Adapter 边界与统一安全链路，未引入微服务、消息队列或新基础设施。交付边界与测试结果见 [39-software-delivery-acceptance-report.md](39-software-delivery-acceptance-report.md)。
+
 ## 架构结论
 
 Arvuno Core 第一阶段采用 **Windows 本地运行的模块化单体架构**。

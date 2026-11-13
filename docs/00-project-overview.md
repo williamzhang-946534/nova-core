@@ -5,8 +5,8 @@
 | 项目 | 状态 |
 | --- | --- |
 | 项目目录 | `E:\williamzhang\zzh\zzh-personal-project\nova` |
-| 当前阶段 | Phase 10 / 第一阶段历史验收已完成；REPAIR-01 安全、隐私、保留、事件、任务和 Mock 机器人治理修复待用户复核（见 [37-remediation-acceptance-report.md](37-remediation-acceptance-report.md)） |
-| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、数据库与多模态媒体备份、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、设备可用性状态转换、Event Schema、带订阅者隔离的进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、任务恢复、历史查询、任务事件、AI Provider、Mock Provider、最小化 Provider Log、Agent Runtime、`/api/chat`、Memory、多模态按需处理、统一保留调度、Mock 桌面机器人治理/安全工具/管理页和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 保留 Phase 10 历史结论，真实机器人和实体硬件仍未验收 |
+| 当前阶段 | Phase 10 / 第一阶段历史验收已完成；REPAIR-01 修复与软件能力补齐待用户复核（见 [37-remediation-acceptance-report.md](37-remediation-acceptance-report.md) 与 [39-software-delivery-acceptance-report.md](39-software-delivery-acceptance-report.md)） |
+| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、数据库与多模态媒体备份、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、设备可用性状态转换、Event Schema、带订阅者隔离的进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、任务恢复、历史查询、任务事件、AI Provider、Mock Provider、最小化 Provider Log、Agent Runtime、`/api/chat`、Memory（压缩、知识提炼、工具执行自动 Procedure Validation）、多模态按需处理与 Provider 契约、统一保留调度、Privacy Erasure、Reasoning AI 候选生成、多步 Planning、Proactive L3、Active Perception 受控集成、Robot 固件协议契约与 Simulator、Mock 桌面机器人治理/安全工具/管理页和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 保留 Phase 10 历史结论，真实机器人和实体硬件仍未验收 |
 | 架构确认 | 已确认 |
 | 第一阶段运行环境 | Windows 11 本地 |
 

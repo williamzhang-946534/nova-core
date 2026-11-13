@@ -67,6 +67,18 @@ class ToolEventPublisherProtocol:
     async def publish(self, event: ArvunoEvent) -> None: ...
 
 
+class ToolProcedureValidationRecorderProtocol:
+    async def record_tool_procedure_validation(
+        self,
+        *,
+        tool_name: str,
+        task_id: str | None,
+        tool_execution_id: str,
+        passed: bool,
+        result: dict[str, Any],
+    ) -> dict[str, Any] | None: ...
+
+
 class ToolExecutor:
     """Runs the validated, authorized, audited, and post-checked tool chain."""
 
@@ -78,6 +90,7 @@ class ToolExecutor:
         confirmation_service: ConfirmationService,
         execution_store: ToolExecutionStoreProtocol,
         event_publisher: ToolEventPublisherProtocol | None = None,
+        procedure_validation_recorder: ToolProcedureValidationRecorderProtocol | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         execution_id_factory: Callable[[], str] = lambda: str(uuid4()),
     ) -> None:
@@ -86,6 +99,7 @@ class ToolExecutor:
         self._confirmation_service = confirmation_service
         self._execution_store = execution_store
         self._event_publisher = event_publisher
+        self._procedure_validation_recorder = procedure_validation_recorder
         self._clock = clock
         self._execution_id_factory = execution_id_factory
 
@@ -255,12 +269,21 @@ class ToolExecutor:
                 started_at,
                 decision,
                 error,
+                tool_name=tool_name,
+                task_id=task_id,
                 output=serialized_output,
             )
             raise error from exc
         except DeviceError as exc:
             error = self._with_execution_id(self._map_device_error(exc), execution_id)
-            await self._finish_failure(execution_id, started_at, decision, error)
+            await self._finish_failure(
+                execution_id,
+                started_at,
+                decision,
+                error,
+                tool_name=tool_name,
+                task_id=task_id,
+            )
             raise error from exc
         except Exception as exc:
             error = self._with_execution_id(
@@ -270,7 +293,14 @@ class ToolExecutor:
                 ),
                 execution_id,
             )
-            await self._finish_failure(execution_id, started_at, decision, error)
+            await self._finish_failure(
+                execution_id,
+                started_at,
+                decision,
+                error,
+                tool_name=tool_name,
+                task_id=task_id,
+            )
             raise error from exc
 
         completed_at = self._clock()
@@ -285,6 +315,14 @@ class ToolExecutor:
             )
         except ToolPersistenceError:
             raise
+
+        await self._record_procedure_validation(
+            tool_name=tool_name,
+            task_id=task_id,
+            execution_id=execution_id,
+            passed=True,
+            result={"verified": verified},
+        )
 
         await self._publish_execution_event(
             execution_id,
@@ -412,6 +450,9 @@ class ToolExecutor:
         started_at: datetime,
         decision: SafetyDecision,
         error: ToolError,
+        *,
+        tool_name: str,
+        task_id: str | None,
         output: dict[str, Any] | None = None,
     ) -> None:
         try:
@@ -432,6 +473,14 @@ class ToolExecutor:
                 extra={"execution_id": execution_id},
             )
             raise persistence_error from error
+
+        await self._record_procedure_validation(
+            tool_name=tool_name,
+            task_id=task_id,
+            execution_id=execution_id,
+            passed=False,
+            result={"code": error.code},
+        )
 
     async def _update(
         self,
@@ -467,6 +516,35 @@ class ToolExecutor:
                 details={"execution_id": execution_id},
             ) from exc
         return completed_at
+
+    async def _record_procedure_validation(
+        self,
+        *,
+        tool_name: str,
+        task_id: str | None,
+        execution_id: str,
+        passed: bool,
+        result: dict[str, Any],
+    ) -> None:
+        if self._procedure_validation_recorder is None or not tool_name:
+            return
+        try:
+            await self._procedure_validation_recorder.record_tool_procedure_validation(
+                tool_name=tool_name,
+                task_id=task_id,
+                tool_execution_id=execution_id,
+                passed=passed,
+                result=result,
+            )
+        except Exception:
+            logger.exception(
+                "tool_procedure_validation_record_failed",
+                extra={
+                    "tool_execution_id": execution_id,
+                    "tool_name": tool_name,
+                    "task_id": task_id,
+                },
+            )
 
     async def _publish_execution_event(
         self,

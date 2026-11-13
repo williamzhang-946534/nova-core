@@ -3,11 +3,13 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, Request
 
 from arvuno_core.api.security import require_api_token
+from arvuno_core.perception.errors import PerceptionStateError
 from arvuno_core.perception.models import (
     ActivePerceptionDeleteData,
     ActivePerceptionDeleteWrapper,
     ActivePerceptionRequestData,
     ActivePerceptionRequestListData,
+    ActivePerceptionRequestView,
 )
 from arvuno_core.perception.service import ActivePerceptionService
 from arvuno_core.schemas.perception import (
@@ -15,6 +17,7 @@ from arvuno_core.schemas.perception import (
     ActivePerceptionEvaluateRequest,
     ActivePerceptionRejectRequest,
 )
+from arvuno_core.tasks.models import TaskCreate, TaskPlanStep
 
 router = APIRouter(
     prefix="/api/active-perception",
@@ -120,8 +123,42 @@ async def execute_request(
     request_id: str,
     service: Annotated[ActivePerceptionService, Depends(get_perception_service)],
 ) -> ActivePerceptionRequestData:
-    observer = getattr(request.app.state, "perception_observer", None)
-    return ActivePerceptionRequestData(data=await service.execute(request_id, observer))
+    task_service = getattr(request.app.state, "task_service", None)
+    if task_service is None:
+        return ActivePerceptionRequestData(data=await service.execute(request_id, None))
+    result = await task_service.create_and_run(
+        TaskCreate(
+            task_type="active_perception.execute",
+            title=f"Execute active perception {request_id}",
+            origin="api",
+            steps=[
+                TaskPlanStep(
+                    name="Execute authorized observation",
+                    tool_name="active_perception_execute",
+                    input={"request_id": request_id},
+                )
+            ],
+            timeout_seconds=30.0,
+        ),
+        correlation_id=f"active-perception:{request_id}",
+    )
+    detail = result.task
+    step = detail.steps[0]
+    if detail.status == "completed" and step.output is not None:
+        request_view = step.output.get("request")
+        if isinstance(request_view, dict):
+            return ActivePerceptionRequestData(
+                data=ActivePerceptionRequestView.model_validate(request_view)
+            )
+    status = step.status.value if hasattr(step.status, "value") else str(step.status)
+    if status == "failed":
+        error = step.error or {}
+        message = error.get("message", "The active perception task failed.")
+        current = await service.get_request(request_id)
+        if current.status == "unavailable":
+            return ActivePerceptionRequestData(data=current)
+        raise PerceptionStateError(message)
+    raise PerceptionStateError(f"The active perception task ended in status '{status}'.")
 
 
 @router.post("/requests/expire", response_model=ActivePerceptionDeleteWrapper)

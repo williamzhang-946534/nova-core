@@ -42,6 +42,7 @@ from arvuno_core.api.observations import router as observations_router
 from arvuno_core.api.observations import source_router as observation_sources_router
 from arvuno_core.api.perception import router as perception_router
 from arvuno_core.api.planning import router as planning_router
+from arvuno_core.api.privacy import router as privacy_router
 from arvuno_core.api.proactive import router as proactive_router
 from arvuno_core.api.reasoning import router as reasoning_router
 from arvuno_core.api.retention import router as retention_router
@@ -76,7 +77,7 @@ from arvuno_core.errors import ArvunoError, ErrorResponse
 from arvuno_core.estimation.service import StateEstimationService
 from arvuno_core.events.bus import EventBus
 from arvuno_core.events.models import ArvunoEventType
-from arvuno_core.events.service import DeviceEventService
+from arvuno_core.events.service import DeviceEventService, EventQueryService
 from arvuno_core.history.service import HistoryService
 from arvuno_core.logging_config import correlation_id_var
 from arvuno_core.memory.service import MemoryService
@@ -90,12 +91,13 @@ from arvuno_core.persistence.provider_logs import SqlProviderLogStore
 from arvuno_core.persistence.tools import SqlToolExecutionStore
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from arvuno_core.planning.service import PlanningService
+from arvuno_core.privacy.service import PrivacyService
 from arvuno_core.proactive.service import ProactiveService
 from arvuno_core.reasoning.service import ReasoningService
 from arvuno_core.retention.service import build_retention_scheduler
-from arvuno_core.robots.mock import MockRobotAdapter
 from arvuno_core.robots.registry import RobotRegistry
 from arvuno_core.robots.service import RobotApplicationService
+from arvuno_core.robots.simulator import DesktopRobotFirmwareSimulatorAdapter
 from arvuno_core.schemas.memory import MemoryRetrievalRequest
 from arvuno_core.spatial.service import SpatialService
 from arvuno_core.tasks.service import TaskService
@@ -182,8 +184,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.exception("startup_state_estimation_rebuild_failed")
         try:
             await app.state.robot_service.sync_robot(
-                app.state.mock_robot_adapter,
-                app.state.mock_robot_adapter.external_id,
+                app.state.robot_simulator_adapter,
+                app.state.robot_simulator_adapter.external_id,
             )
         except Exception:
             logger.exception("mock_robot_projection_sync_failed")
@@ -353,9 +355,38 @@ def create_app(
         unit_of_work_factory,
         environment_name=app_settings.default_environment_name,
     )
+    provider_log_store = SqlProviderLogStore(unit_of_work_factory)
+    candidate_ai_provider = (
+        ai_provider
+        if ai_provider is not None or app_settings.ai_provider == "openai_compatible"
+        else None
+    )
+    if ai_provider is None:
+        if app_settings.ai_provider == "openai_compatible":
+            ai_provider = OpenAICompatibleProvider(
+                OpenAICompatibleProviderConfig(
+                    base_url=app_settings.ai_base_url or "",
+                    model=app_settings.ai_model or "",
+                    api_key=app_settings.ai_api_key or SecretStr(""),
+                    timeout_seconds=app_settings.ai_timeout_seconds,
+                    max_retries=app_settings.ai_max_retries,
+                    structured_output_mode=app_settings.ai_structured_output_mode,
+                    retry_backoff_seconds=app_settings.ai_retry_backoff_seconds,
+                    debug_logging=app_settings.ai_provider_debug_logging,
+                    debug_logging_ttl_seconds=app_settings.ai_provider_debug_logging_ttl_seconds,
+                ),
+                provider_log_store,
+            )
+        else:
+            ai_provider = MockAIProvider(
+                provider_log_store,
+                debug_logging=app_settings.ai_provider_debug_logging,
+                debug_logging_ttl_seconds=app_settings.ai_provider_debug_logging_ttl_seconds,
+            )
     reasoning_service = ReasoningService(
         unit_of_work_factory,
         environment_name=app_settings.default_environment_name,
+        ai_provider=candidate_ai_provider,
     )
     app.state.memory_service = memory_service
     app.state.history_service = history_service
@@ -493,11 +524,13 @@ def create_app(
             )
         return result
 
-    mock_robot_adapter = MockRobotAdapter(profile=app_settings.robot_profile)
+    robot_simulator_adapter = DesktopRobotFirmwareSimulatorAdapter(
+        profile=app_settings.robot_profile,
+    )
     robot_registry = RobotRegistry(unit_of_work_factory)
     robot_service = RobotApplicationService(
         robot_registry,
-        {mock_robot_adapter.adapter_id: mock_robot_adapter},
+        {robot_simulator_adapter.adapter_id: robot_simulator_adapter},
         unit_of_work_factory=unit_of_work_factory,
         event_publisher=event_bus,
         heartbeat_timeout_seconds=app_settings.robot_heartbeat_timeout_seconds,
@@ -508,7 +541,14 @@ def create_app(
         environment_state_sink=environment_context,
         memory_retrieval_provider=retrieve_memory,
         history_query_provider=query_history,
+        event_query_provider=EventQueryService(unit_of_work_factory).query,
         robot_service=robot_service,
+        perception_execution_provider=(
+            lambda request_id: app.state.perception_service.execute(
+                request_id,
+                getattr(app.state, "perception_observer", None),
+            )
+        ),
     )
     tool_executor = ToolExecutor(
         registry=tool_registry,
@@ -522,6 +562,7 @@ def create_app(
         ),
         execution_store=SqlToolExecutionStore(unit_of_work_factory),
         event_publisher=event_bus,
+        procedure_validation_recorder=memory_service,
     )
     app.state.mock_device_adapter = mock_adapter
     app.state.home_assistant_adapter = home_assistant_adapter
@@ -563,6 +604,7 @@ def create_app(
         app.state.task_service,
         device_service,
         environment_name=app_settings.default_environment_name,
+        ai_provider=candidate_ai_provider,
     )
     app.state.proactive_service = ProactiveService(
         unit_of_work_factory,
@@ -570,6 +612,7 @@ def create_app(
         environment_name=app_settings.default_environment_name,
         default_autonomy_level=2,
         max_autonomy_level=2,
+        planning_service=app.state.planning_service,
     )
     app.state.perception_service = ActivePerceptionService(
         unit_of_work_factory,
@@ -579,7 +622,9 @@ def create_app(
         environment_name=app_settings.default_environment_name,
     )
     app.state.perception_observer = None
-    app.state.mock_robot_adapter = mock_robot_adapter
+    app.state.robot_simulator_adapter = robot_simulator_adapter
+    # Compatibility alias for existing integration tests and local tooling.
+    app.state.mock_robot_adapter = robot_simulator_adapter
     app.state.robot_registry = robot_registry
     app.state.robot_service = robot_service
     app.state.robot_mobile_perception_service = RobotMobilePerceptionService(
@@ -598,7 +643,6 @@ def create_app(
         },
     )
     app.state.initialize_tool_runtime = initialize_tool_runtime
-    provider_log_store = SqlProviderLogStore(unit_of_work_factory)
     app.state.retention_scheduler = build_retention_scheduler(
         settings=app_settings,
         unit_of_work_factory=unit_of_work_factory,
@@ -607,30 +651,11 @@ def create_app(
         proactive_service=app.state.proactive_service,
         provider_log_store=provider_log_store,
     )
-    if ai_provider is None:
-        if app_settings.ai_provider == "openai_compatible":
-            ai_provider = OpenAICompatibleProvider(
-                OpenAICompatibleProviderConfig(
-                    base_url=app_settings.ai_base_url or "",
-                    model=app_settings.ai_model or "",
-                    api_key=app_settings.ai_api_key or SecretStr(""),
-                    timeout_seconds=app_settings.ai_timeout_seconds,
-                    max_retries=app_settings.ai_max_retries,
-                    structured_output_mode=app_settings.ai_structured_output_mode,
-                    retry_backoff_seconds=app_settings.ai_retry_backoff_seconds,
-                    debug_logging=app_settings.ai_provider_debug_logging,
-                    debug_logging_ttl_seconds=app_settings.ai_provider_debug_logging_ttl_seconds,
-                ),
-                provider_log_store,
-            )
-        else:
-            ai_provider = MockAIProvider(
-                provider_log_store,
-                debug_logging=app_settings.ai_provider_debug_logging,
-                debug_logging_ttl_seconds=app_settings.ai_provider_debug_logging_ttl_seconds,
-            )
-    else:
-        ai_provider = ai_provider
+    app.state.privacy_service = PrivacyService(
+        unit_of_work_factory,
+        app_settings.resolved_data_dir / "media" / "multimodal",
+        event_bus,
+    )
 
     async def environment_snapshot() -> AgentEnvironmentSnapshot:
         state = environment_context.state
@@ -700,6 +725,7 @@ def create_app(
     app.include_router(robots_router)
     app.include_router(robot_perception_router)
     app.include_router(retention_router)
+    app.include_router(privacy_router)
     app.include_router(planning_router)
     app.include_router(proactive_router)
     app.include_router(perception_router)

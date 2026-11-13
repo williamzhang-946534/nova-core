@@ -357,6 +357,7 @@ def test_default_tools_are_read_only_and_have_service_boundaries() -> None:
         "get_environment_state",
         "retrieve_memory",
         "query_history",
+        "query_events",
         "get_device_state",
         "control_device",
     }
@@ -709,6 +710,8 @@ def test_app_tools_use_memory_and_history_services_without_repositories(
         "get_environment_state",
         "retrieve_memory",
         "query_history",
+        "query_events",
+        "active_perception_execute",
         "get_device_state",
         "control_device",
         "robot_observe_scene",

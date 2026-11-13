@@ -129,6 +129,7 @@ class MemoryRetrievalResult(BaseModel):
     memories: list[MemoryView]
     preferences: list[PreferenceView]
     source_references: list[MemoryEvidenceView] = Field(default_factory=list)
+    retrieval_strategy: Literal["bounded_lexical_hybrid"] = "bounded_lexical_hybrid"
     retrieved_at: datetime
 
 
@@ -137,10 +138,34 @@ class HistoryReference(BaseModel):
     record: dict[str, Any] | None = None
 
 
+class MemoryGraphNode(BaseModel):
+    id: str
+    node_type: Literal["memory", "space", "entity", "task"]
+    label: str
+    memory_type: MemoryType | None = None
+    status: str | None = None
+
+
+class MemoryGraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str
+
+
+class MemoryGraph(BaseModel):
+    nodes: list[MemoryGraphNode] = Field(default_factory=list)
+    edges: list[MemoryGraphEdge] = Field(default_factory=list)
+    truncated: bool = False
+    generated_at: datetime
+
+
 __all__ = [
     "EvidenceType",
     "HistoryReference",
     "MemoryEvidenceView",
+    "MemoryGraph",
+    "MemoryGraphEdge",
+    "MemoryGraphNode",
     "MemoryRevisionView",
     "MemoryRetrievalResult",
     "MemorySourceType",

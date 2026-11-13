@@ -12,6 +12,7 @@ from arvuno_core.events.models import ArvunoEvent
 from arvuno_core.persistence.exceptions import RepositoryError
 from arvuno_core.persistence.repositories import EventRecordCreate
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.tools.models import EventQueryInput, EventQueryOutput, EventSummary
 
 UnitOfWorkFactory = Callable[[], SqlAlchemyUnitOfWork]
 
@@ -95,6 +96,27 @@ class EventQueryService:
                 return _domain_event(record) if record is not None else None
 
         return await asyncio.to_thread(execute)
+
+    async def query(self, request: EventQueryInput) -> EventQueryOutput:
+        page = await self.list(
+            event_type=request.event_type,
+            source=request.source,
+            subject_type=request.subject_type,
+            subject_id=request.subject_id,
+            correlation_id=request.correlation_id,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            order=request.order,
+            page=1,
+            page_size=request.limit,
+        )
+        return EventQueryOutput(
+            service_available=True,
+            total=page.total,
+            events=[
+                EventSummary.model_validate(event, from_attributes=True) for event in page.items
+            ],
+        )
 
 
 class EventRetentionService:

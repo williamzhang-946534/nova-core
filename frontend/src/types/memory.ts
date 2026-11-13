@@ -88,6 +88,11 @@ export interface MemoryItem {
   updated_at: string;
 }
 
+export interface MemoryOperationResult extends MemoryItem {
+  source_memory_ids: string[];
+  operation: "compress" | "distill";
+}
+
 export interface PreferenceItem {
   id: string;
   key: string;
@@ -117,7 +122,55 @@ export interface RetrievalResult {
   memories: MemoryItem[];
   preferences: PreferenceItem[];
   source_references: MemoryEvidence[];
+  retrieval_strategy: "bounded_lexical_hybrid";
   retrieved_at: string;
+}
+
+export type MemoryGraphNode = {
+  id: string;
+  node_type: "memory" | "space" | "entity" | "task";
+  label: string;
+  memory_type?: MemoryType;
+  status?: string;
+};
+
+export type MemoryGraphEdge = {
+  source: string;
+  target: string;
+  relation: string;
+};
+
+export interface MemoryGraph {
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+  truncated: boolean;
+  generated_at: string;
+}
+
+export interface MemoryCompressPayload {
+  memory_ids: string[];
+  title?: string;
+  summary?: string;
+  expires_in_days?: number;
+}
+
+export interface MemoryDistillPayload {
+  memory_ids: string[];
+  title?: string;
+  summary?: string;
+  subject_type?: string;
+  subject_id?: string;
+  predicate?: string;
+  object_value?: unknown;
+  expires_in_days?: number;
+}
+
+export interface MemoryGraphQuery {
+  memory_type?: MemoryType;
+  keyword?: string;
+  space_id?: string;
+  entity_id?: string;
+  max_memories?: number;
 }
 
 export interface MemoryCreatePayload {

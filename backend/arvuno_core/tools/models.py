@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -203,6 +203,42 @@ class MemoryRetrievalOutput(BaseModel):
     preferences: list[PreferenceView] = Field(default_factory=list)
     source_references: list[dict[str, Any]] = Field(default_factory=list)
     retrieved_at: datetime | None = None
+
+
+class EventQueryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: str | None = Field(default=None, min_length=1, max_length=100)
+    source: str | None = Field(default=None, min_length=1, max_length=100)
+    subject_type: str | None = Field(default=None, min_length=1, max_length=100)
+    subject_id: str | None = Field(default=None, min_length=1, max_length=255)
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=100)
+    start_time: AwareDatetime | None = None
+    end_time: AwareDatetime | None = None
+    order: Literal["asc", "desc"] = "desc"
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class EventSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    event_type: str
+    source: str
+    subject_type: str | None = None
+    subject_id: str | None = None
+    payload: dict[str, Any]
+    correlation_id: str | None = None
+    occurred_at: datetime
+    created_at: datetime
+
+
+class EventQueryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    service_available: bool
+    total: int | None = None
+    events: list[EventSummary] = Field(default_factory=list)
 
 
 class HistoryQueryOperation(StrEnum):

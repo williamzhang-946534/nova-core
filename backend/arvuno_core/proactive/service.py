@@ -28,6 +28,7 @@ from arvuno_core.proactive.models import (
     ProactiveSuggestionView,
     SuppressionDecision,
 )
+from arvuno_core.schemas.planning import GoalCompileRequest
 
 UnitOfWorkFactory = Callable[[], SqlAlchemyUnitOfWork]
 
@@ -43,6 +44,10 @@ class NotificationProtocol(Protocol):
         related_event_id: str | None = None,
         related_task_id: str | None = None,
     ) -> Any: ...
+
+
+class ProactivePlanningProtocol(Protocol):
+    async def compile_goal(self, request: GoalCompileRequest) -> Any: ...
 
 
 ANOMALY_THRESHOLDS: dict[str, tuple[float, str]] = {
@@ -82,6 +87,7 @@ class ProactiveService:
         max_per_day: int = 20,
         default_autonomy_level: int = 2,
         max_autonomy_level: int = 2,
+        planning_service: ProactivePlanningProtocol | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._notification_service = notification_service
@@ -96,6 +102,7 @@ class ProactiveService:
         self._max_per_day = max_per_day
         self._default_autonomy_level = default_autonomy_level
         self._max_autonomy_level = max_autonomy_level
+        self._planning_service = planning_service
 
     async def handle_event(self, event: ArvunoEvent) -> None:
         """Event bus entry point for proactive evaluation."""
@@ -212,6 +219,11 @@ class ProactiveService:
         *,
         feedback: str | None = None,
     ) -> ProactiveSuggestionView:
+        goal_id: str | None = None
+        existing = await self.get_suggestion(suggestion_id)
+        if existing.autonomy_level >= 3 and self._planning_service is not None:
+            goal_id = await self._create_candidate_goal(existing)
+
         def execute() -> ProactiveSuggestionView:
             with self._unit_of_work_factory() as unit_of_work:
                 assert unit_of_work.proactive is not None
@@ -228,14 +240,41 @@ class ProactiveService:
                 row.user_feedback = {
                     "action": "accept",
                     "feedback": feedback,
+                    "goal_id": goal_id,
                     "at": now.isoformat(),
                 }
+                if goal_id is not None:
+                    row.goal_id = goal_id
                 unit_of_work.proactive.mark(row)
                 self._update_quality_score(row)
                 unit_of_work.commit()
                 return self._view(row)
 
         return await asyncio.to_thread(execute)
+
+    async def _create_candidate_goal(self, row: ProactiveSuggestion) -> str:
+        assert self._planning_service is not None
+        action = row.candidate_action or {}
+        goal = await self._planning_service.compile_goal(
+            GoalCompileRequest(
+                objective=str(action.get("objective") or row.title),
+                environment_id=row.environment_id,
+                description=row.message,
+                desired_state=dict(action),
+                constraints={"automatic_execution": False},
+                prohibitions=[{"type": "automatic_execution"}],
+                priority="high" if row.importance == "high" else "normal",
+                authorization_scope={
+                    "origin": "proactive_user_accept",
+                    "autonomy_level": row.autonomy_level,
+                },
+                reasoning_session_id=row.reasoning_session_id,
+                origin_type="automation",
+                source_record_id=row.id,
+                now=self._now(),
+            )
+        )
+        return str(goal.id)
 
     async def dismiss_suggestion(
         self,

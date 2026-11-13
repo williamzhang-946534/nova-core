@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -12,6 +13,9 @@ from arvuno_core.memory.errors import (
 from arvuno_core.memory.models import (
     HistoryReference,
     MemoryEvidenceView,
+    MemoryGraph,
+    MemoryGraphEdge,
+    MemoryGraphNode,
     MemoryRetrievalResult,
     MemoryRevisionView,
     MemoryView,
@@ -220,6 +224,7 @@ class MemoryService:
                 version = MemoryProcedureVersion(
                     memory_id=memory.id,
                     version=request.version,
+                    tool_name=request.tool_name,
                     steps=request.steps,
                     input_schema=request.input_schema,
                     output_schema=request.output_schema,
@@ -230,6 +235,51 @@ class MemoryService:
                 result = store.add_procedure_version(version)
                 unit_of_work.commit()
                 return _procedure_version_data(result)
+
+        return await asyncio.to_thread(execute)
+
+    async def record_tool_procedure_validation(
+        self,
+        *,
+        tool_name: str,
+        task_id: str | None,
+        tool_execution_id: str,
+        passed: bool,
+        result: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        def execute() -> dict[str, Any] | None:
+            with self._unit_of_work_factory() as unit_of_work:
+                store = self._store(unit_of_work)
+                candidates = store.procedure_versions_for_tool(tool_name)
+                if len(candidates) != 1:
+                    return None
+                version = candidates[0]
+                validation = MemoryProcedureValidation(
+                    procedure_version_id=version.id,
+                    task_id=task_id,
+                    tool_execution_id=tool_execution_id,
+                    status="passed" if passed else "failed",
+                    result=result,
+                    validator_type="tool_executor",
+                )
+                store.add_procedure_validation(validation)
+                if validation.status == "passed":
+                    version.successful_validations += 1
+                    if (
+                        version.status != "validated"
+                        and version.successful_validations >= version.required_successes
+                    ):
+                        version.status = "validated"
+                        version.validated_at = datetime.now(UTC)
+                        memory = self._get(store, version.memory_id)
+                        memory.verification_status = "verified"
+                        memory.last_reviewed_at = version.validated_at
+                        if memory.status == "candidate":
+                            memory.status = "active"
+                else:
+                    version.failed_validations += 1
+                unit_of_work.commit()
+                return _procedure_version_data(version)
 
         return await asyncio.to_thread(execute)
 
@@ -409,6 +459,7 @@ class MemoryService:
                         keyword=request.query or None,
                         page_size=100,
                     )
+                    scored: list[tuple[float, Memory]] = []
                     for memory in rows:
                         if self._expire_if_needed(store, memory, now):
                             continue
@@ -422,7 +473,13 @@ class MemoryService:
                             }
                             if memory.task_id is None and "task" not in evidence_types:
                                 continue
-                        memories.append(memory)
+                        score = self._score_memory(memory, request.query or "")
+                        if score > 0:
+                            scored.append((score, memory))
+                    scored.sort(
+                        key=lambda item: (-item[0], -item[1].importance, item[1].id),
+                    )
+                    memories.extend(memory for _, memory in scored)
 
                 references: list[MemoryEvidenceView] = []
                 for memory in memories:
@@ -445,6 +502,201 @@ class MemoryService:
                     preferences=[_preference_view(item) for item in preferences],
                     source_references=references,
                     retrieved_at=now,
+                )
+
+        return await asyncio.to_thread(execute)
+
+    async def compress_memories(self, request: Any) -> tuple[MemoryView, list[str]]:
+        def execute() -> tuple[MemoryView, list[str]]:
+            with self._unit_of_work_factory() as unit_of_work:
+                store = self._store(unit_of_work)
+                memories = self._operation_sources(store, request.memory_ids, "episodic")
+                now = datetime.now(UTC)
+                summary = request.summary or "; ".join(
+                    f"{memory.title}: {memory.summary or memory.content}"[:400]
+                    for memory in memories
+                )
+                content = "Compressed episodic memory candidate.\n" + "\n".join(
+                    f"- {memory.title}: {memory.content}"[:800] for memory in memories
+                )
+                candidate = self._candidate_from_sources(
+                    memories,
+                    memory_type="episodic",
+                    title=request.title or f"Compressed: {memories[0].title}",
+                    content=content,
+                    summary=summary,
+                    keywords={keyword for memory in memories for keyword in memory.keywords},
+                    expires_at=now + timedelta(days=request.expires_in_days),
+                    operation="compress",
+                )
+                added = store.add_memory(candidate)
+                self._copy_operation_evidence(store, added, memories)
+                self._record_operation(store, added, memories, "compress")
+                unit_of_work.commit()
+                return _memory_view(added), [memory.id for memory in memories]
+
+        return await asyncio.to_thread(execute)
+
+    async def distill_memories(self, request: Any) -> tuple[MemoryView, list[str]]:
+        def execute() -> tuple[MemoryView, list[str]]:
+            with self._unit_of_work_factory() as unit_of_work:
+                store = self._store(unit_of_work)
+                memories = self._operation_sources(store, request.memory_ids, "episodic")
+                unconfirmed = [
+                    memory.id
+                    for memory in memories
+                    if not memory.user_confirmed or memory.verification_status != "verified"
+                ]
+                if unconfirmed:
+                    raise MemoryValidationError(
+                        "Knowledge distillation requires confirmed episodic memories.",
+                        {"memory_ids": unconfirmed},
+                    )
+                statement_complete = all(
+                    [
+                        request.subject_type,
+                        request.subject_id,
+                        request.predicate,
+                        request.object_value is not None,
+                    ]
+                )
+                if not statement_complete:
+                    raise MemoryValidationError(
+                        "A distilled semantic candidate requires a complete "
+                        "subject-predicate-object statement."
+                    )
+                now = datetime.now(UTC)
+                content = (
+                    f"{request.subject_type} {request.subject_id} {request.predicate} "
+                    f"{request.object_value}. Derived from: "
+                    + "; ".join(memory.title for memory in memories)
+                )
+                summary = request.summary or f"Derived from {len(memories)} confirmed records."
+                candidate = self._candidate_from_sources(
+                    memories,
+                    memory_type="semantic",
+                    title=request.title or f"Distilled: {request.subject_id}",
+                    content=content,
+                    summary=summary,
+                    keywords={keyword for memory in memories for keyword in memory.keywords},
+                    expires_at=now + timedelta(days=request.expires_in_days),
+                    operation="distill",
+                )
+                candidate.subject_type = request.subject_type
+                candidate.subject_id = request.subject_id
+                candidate.predicate = request.predicate
+                candidate.object_value = request.object_value
+                conflicts = store.semantic_conflicts(
+                    subject_type=request.subject_type,
+                    subject_id=request.subject_id,
+                    predicate=request.predicate,
+                )
+                conflicting = [
+                    item.id
+                    for item in conflicts
+                    if item.id not in set(request.memory_ids)
+                    and item.object_value != request.object_value
+                ]
+                if conflicting:
+                    raise MemoryConflictError(conflicting)
+                added = store.add_memory(candidate)
+                self._copy_operation_evidence(store, added, memories)
+                self._record_operation(store, added, memories, "distill")
+                unit_of_work.commit()
+                return _memory_view(added), [memory.id for memory in memories]
+
+        return await asyncio.to_thread(execute)
+
+    async def memory_graph(self, request: Any) -> MemoryGraph:
+        def execute() -> MemoryGraph:
+            now = datetime.now(UTC)
+            with self._unit_of_work_factory() as unit_of_work:
+                store = self._store(unit_of_work)
+                rows, total = store.list_memories(
+                    memory_type=request.memory_type,
+                    status="current",
+                    keyword=request.keyword,
+                    space_id=request.space_id,
+                    entity_id=request.entity_id,
+                    page_size=request.max_memories,
+                )
+                nodes: list[MemoryGraphNode] = []
+                edges: list[MemoryGraphEdge] = []
+                seen_nodes: set[str] = set()
+                seen_edges: set[tuple[str, str, str]] = set()
+
+                def add_node(node: MemoryGraphNode) -> None:
+                    if node.id not in seen_nodes:
+                        nodes.append(node)
+                        seen_nodes.add(node.id)
+
+                def add_edge(source: str, target: str, relation: str) -> None:
+                    key = (source, target, relation)
+                    if key not in seen_edges:
+                        edges.append(
+                            MemoryGraphEdge(source=source, target=target, relation=relation)
+                        )
+                        seen_edges.add(key)
+
+                for memory in rows:
+                    if self._expire_if_needed(store, memory, now):
+                        continue
+                    memory_key = f"memory:{memory.id}"
+                    add_node(
+                        MemoryGraphNode(
+                            id=memory_key,
+                            node_type="memory",
+                            label=memory.title,
+                            memory_type=memory.memory_type,
+                            status=memory.status,
+                        )
+                    )
+                    if memory.space_id:
+                        space_key = f"space:{memory.space_id}"
+                        add_node(
+                            MemoryGraphNode(
+                                id=space_key,
+                                node_type="space",
+                                label=memory.space_id,
+                                status="reference",
+                            )
+                        )
+                        add_edge(memory_key, space_key, "located_in")
+                    if memory.entity_id:
+                        entity_key = f"entity:{memory.entity_id}"
+                        add_node(
+                            MemoryGraphNode(
+                                id=entity_key,
+                                node_type="entity",
+                                label=memory.entity_id,
+                                status="reference",
+                            )
+                        )
+                        add_edge(memory_key, entity_key, "about")
+                    if memory.task_id:
+                        task_key = f"task:{memory.task_id}"
+                        add_node(
+                            MemoryGraphNode(
+                                id=task_key,
+                                node_type="task",
+                                label=memory.task_id,
+                                status="reference",
+                            )
+                        )
+                        add_edge(task_key, memory_key, "recorded_by")
+                    store.add_access_log(
+                        MemoryAccessLog(
+                            memory_id=memory.id,
+                            access_type="read",
+                            query={"view": "graph"},
+                        )
+                    )
+                unit_of_work.commit()
+                return MemoryGraph(
+                    nodes=nodes,
+                    edges=edges,
+                    truncated=total > len(rows),
+                    generated_at=now,
                 )
 
         return await asyncio.to_thread(execute)
@@ -492,6 +744,133 @@ class MemoryService:
         return SqlAlchemyMemoryStore(unit_of_work.memories)
 
     @staticmethod
+    def _operation_sources(
+        store: MemoryStore,
+        memory_ids: list[str],
+        expected_type: str,
+    ) -> list[Memory]:
+        unique_ids = list(dict.fromkeys(memory_ids))
+        memories: dict[str, Memory] = {}
+        missing: list[str] = []
+        invalid_ids: list[str] = []
+        for memory_id in unique_ids:
+            memory = store.get_memory(memory_id)
+            if memory is None:
+                missing.append(memory_id)
+                continue
+            if memory.memory_type != expected_type or memory.status not in {
+                "active",
+                "candidate",
+                "corrected",
+            }:
+                invalid_ids.append(memory_id)
+                continue
+            memories[memory_id] = memory
+        if missing:
+            raise MemoryValidationError(
+                "One or more operation source memories were not found.",
+                {"memory_ids": missing},
+            )
+        if invalid_ids:
+            raise MemoryValidationError(
+                "One or more operation source memories are not usable.",
+                {"memory_ids": invalid_ids},
+            )
+        return [memories[memory_id] for memory_id in unique_ids]
+
+    @staticmethod
+    def _candidate_from_sources(
+        memories: list[Memory],
+        *,
+        memory_type: str,
+        title: str,
+        content: str,
+        summary: str,
+        keywords: set[str],
+        expires_at: datetime,
+        operation: str,
+    ) -> Memory:
+        first = memories[0]
+        same_space = len({memory.space_id for memory in memories}) == 1
+        same_entity = len({memory.entity_id for memory in memories}) == 1
+        same_task = len({memory.task_id for memory in memories}) == 1
+        same_owner = len({memory.owner_id for memory in memories}) == 1
+        same_access = len({memory.access_level for memory in memories}) == 1
+        return Memory(
+            memory_type=memory_type,
+            title=title[:255],
+            content=content,
+            summary=summary,
+            keywords=sorted(keyword for keyword in keywords if keyword)[:30],
+            importance=max(memory.importance for memory in memories),
+            source_type="system",
+            source_id=f"memory_{operation}:{first.id}",
+            user_confirmed=False,
+            status="candidate",
+            confidence=0.5,
+            verification_status="unverified",
+            owner_id=first.owner_id if same_owner else "local_user",
+            access_level=first.access_level if same_access else "owner_only",
+            scope={"operation": operation, "source_memory_ids": [item.id for item in memories]},
+            space_id=first.space_id if same_space else None,
+            entity_id=first.entity_id if same_entity else None,
+            task_id=first.task_id if same_task else None,
+            valid_from=datetime.now(UTC),
+            expires_at=expires_at,
+        )
+
+    @staticmethod
+    def _copy_operation_evidence(
+        store: MemoryStore,
+        candidate: Memory,
+        memories: list[Memory],
+    ) -> None:
+        added = 0
+        for memory in memories:
+            for evidence in store.evidence_for(memory.id):
+                store.add_evidence(
+                    MemoryEvidence(
+                        memory_id=candidate.id,
+                        evidence_type=evidence.evidence_type,
+                        evidence_id=evidence.evidence_id,
+                        source_type=evidence.source_type,
+                        source_record_id=evidence.source_record_id,
+                        trust_level=evidence.trust_level,
+                        snapshot=dict(evidence.snapshot),
+                        occurred_at=evidence.occurred_at,
+                    )
+                )
+                added += 1
+        candidate.scope["copied_evidence_count"] = added
+
+    @staticmethod
+    def _record_operation(
+        store: MemoryStore,
+        candidate: Memory,
+        memories: list[Memory],
+        operation: str,
+    ) -> None:
+        store.add_revision(
+            MemoryRevision(
+                memory_id=candidate.id,
+                revision_type="create",
+                previous_content=candidate.content,
+                changed_fields={"status": candidate.status, "operation": operation},
+                actor_type="system",
+                actor_id="memory_governance",
+                reason=f"{operation.capitalize()} generated a reviewable candidate.",
+            )
+        )
+        for memory in memories:
+            store.add_access_log(
+                MemoryAccessLog(
+                    memory_id=memory.id,
+                    access_type="update",
+                    query={"operation": operation, "candidate_memory_id": candidate.id},
+                )
+            )
+
+    @staticmethod
     def _get(store: MemoryStore, memory_id: str) -> Memory:
         memory = store.get_memory(memory_id)
         if memory is None:
@@ -533,6 +912,43 @@ class MemoryService:
             )
         )
         return True
+
+    @staticmethod
+    def _score_memory(memory: Memory, query: str) -> float:
+        """Return a bounded lexical relevance score for hybrid retrieval."""
+
+        terms = [term.casefold() for term in re.split(r"\s+", query.strip()) if term]
+        if not terms:
+            return 1.0
+        title = memory.title.casefold()
+        content = memory.content.casefold()
+        summary = (memory.summary or "").casefold()
+        keywords = " ".join(memory.keywords).casefold()
+        subject = (
+            f"{memory.subject_type or ''} {memory.subject_id or ''} {memory.predicate or ''}"
+        ).casefold()
+        object_value = str(memory.object_value or "").casefold()
+        score = 0.0
+        for term in terms:
+            term_score = 0.0
+            if term == title:
+                term_score += 5.0
+            elif term in title:
+                term_score += 3.0
+            if term in content:
+                term_score += 2.0
+            if term in summary:
+                term_score += 1.0
+            if term in keywords:
+                term_score += 1.5
+            if term in subject:
+                term_score += 1.0
+            if term in object_value:
+                term_score += 1.0
+            if term_score == 0:
+                return 0.0
+            score += term_score
+        return score * (1.0 + memory.importance / 100.0)
 
     @staticmethod
     def _requested_types(question_type: Any) -> list[str]:
@@ -906,6 +1322,7 @@ def _procedure_version_data(version: MemoryProcedureVersion) -> dict[str, Any]:
         "id": version.id,
         "memory_id": version.memory_id,
         "version": version.version,
+        "tool_name": version.tool_name,
         "status": version.status,
         "required_successes": version.required_successes,
         "successful_validations": version.successful_validations,

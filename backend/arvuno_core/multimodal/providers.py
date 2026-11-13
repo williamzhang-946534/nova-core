@@ -1,4 +1,6 @@
+import asyncio
 import hashlib
+import time
 import wave
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,6 +20,7 @@ class ProviderResult:
         alternatives: list[Any] | None = None,
         output_path: Path | None = None,
         output_mime: str | None = None,
+        partial: bool = False,
     ) -> None:
         self.result_kind = result_kind
         self.result = result
@@ -27,6 +30,7 @@ class ProviderResult:
         self.alternatives = alternatives
         self.output_path = output_path
         self.output_mime = output_mime
+        self.partial = partial
 
 
 class MultimodalProviderAdapter(Protocol):
@@ -211,3 +215,109 @@ def default_adapters() -> dict[str, MultimodalProviderAdapter]:
         MockTTSProvider(),  # type: ignore[list-item]
     ]
     return {adapter.capability: adapter for adapter in adapters}
+
+
+class GovernedProviderAdapter:
+    """Wrap a replaceable provider with local timeout, retry, and quota policy."""
+
+    capability = "governed"
+    provider_name = "governed"
+    model_id = "governed"
+    model_version = "1.0.0"
+    processing_location = "external"
+
+    def __init__(
+        self,
+        delegate: MultimodalProviderAdapter,
+        *,
+        timeout_seconds: float,
+        max_attempts: int = 1,
+        max_requests: int | None = None,
+        quota_window_seconds: float | None = None,
+        clock: Any = time.monotonic,
+    ) -> None:
+        self._delegate = delegate
+        self.capability = delegate.capability
+        self.provider_name = delegate.provider_name
+        self.model_id = delegate.model_id
+        self.model_version = delegate.model_version
+        self.processing_location = delegate.processing_location
+        self.timeout_seconds = timeout_seconds
+        self.max_attempts = max_attempts
+        self.max_requests = max_requests
+        self.quota_window_seconds = quota_window_seconds
+        self._clock = clock
+        self._window_started_at = clock()
+        self._request_count = 0
+
+    async def process(
+        self,
+        *,
+        capability: str,
+        content: bytes,
+        mime_type: str,
+        text: str | None = None,
+        output_path: Path | None = None,
+    ) -> ProviderResult:
+        if capability != self.capability:
+            raise MultimodalError(code="MULTIMODAL_PROVIDER_CAPABILITY_INVALID")
+        request_started_at = self._check_quota(reserve=False)
+        deadline = request_started_at + self.timeout_seconds
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            self._check_quota(now=request_started_at)
+            remaining = max(0.0, deadline - self._clock())
+            try:
+                return await asyncio.wait_for(
+                    self._delegate.process(
+                        capability=capability,
+                        content=content,
+                        mime_type=mime_type,
+                        text=text,
+                        output_path=output_path,
+                    ),
+                    timeout=remaining,
+                )
+            except TimeoutError as exc:
+                raise MultimodalError(
+                    code="MULTIMODAL_PROVIDER_TIMEOUT",
+                    message="The governed provider deadline elapsed.",
+                    status_code=504,
+                ) from exc
+            except MultimodalError as exc:
+                last_error = exc
+                if (
+                    exc.status_code not in {408, 429, 500, 502, 503, 504}
+                    or attempt == self.max_attempts
+                ):
+                    raise
+            except (ConnectionError, OSError) as exc:
+                last_error = exc
+                if attempt == self.max_attempts:
+                    raise
+        raise MultimodalError(
+            code="MULTIMODAL_PROVIDER_FAILED",
+            message=f"The governed provider failed after {attempt} attempts.",
+            status_code=502,
+        ) from last_error
+
+    def _check_quota(self, *, now: float | None = None, reserve: bool = True) -> float:
+        if self.max_requests is None:
+            return self._clock()
+        if now is None:
+            now = self._clock()
+        if (
+            self.quota_window_seconds is not None
+            and now - self._window_started_at >= self.quota_window_seconds
+        ):
+            self._window_started_at = now
+            self._request_count = 0
+        if self._request_count >= self.max_requests:
+            raise MultimodalError(
+                code="MULTIMODAL_PROVIDER_QUOTA_EXCEEDED",
+                message="The governed provider request quota has been reached.",
+                status_code=429,
+            )
+        if reserve:
+            self._request_count += 1
+        return now

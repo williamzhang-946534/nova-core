@@ -7,6 +7,11 @@ import type {
   MemoryEvidence,
   MemoryItem,
   MemoryListQuery,
+  MemoryCompressPayload,
+  MemoryDistillPayload,
+  MemoryGraph,
+  MemoryGraphQuery,
+  MemoryOperationResult,
   MemoryListResponse,
   MemoryRevision,
   MemorySourceType,
@@ -198,7 +203,44 @@ function isRetrieval(value: unknown): value is RetrievalResult {
     value.preferences.every(isPreference) &&
     Array.isArray(value.source_references) &&
     value.source_references.every(isEvidence) &&
+    value.retrieval_strategy === "bounded_lexical_hybrid" &&
     isString(value.retrieved_at)
+  );
+}
+
+function isGraphNode(value: unknown): value is import("@/types/memory").MemoryGraphNode {
+  return (
+    isRecord(value) &&
+    isString(value.id) &&
+    isOneOf(value.node_type, ["memory", "space", "entity", "task"] as const) &&
+    isString(value.label)
+  );
+}
+
+function isGraphEdge(value: unknown): value is import("@/types/memory").MemoryGraphEdge {
+  return (
+    isRecord(value) && isString(value.source) && isString(value.target) && isString(value.relation)
+  );
+}
+
+function isMemoryGraph(value: unknown): value is MemoryGraph {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.nodes) &&
+    value.nodes.every(isGraphNode) &&
+    Array.isArray(value.edges) &&
+    value.edges.every(isGraphEdge) &&
+    isBoolean(value.truncated) &&
+    isString(value.generated_at)
+  );
+}
+
+function isMemoryOperation(value: unknown): value is MemoryOperationResult {
+  const candidate = value as MemoryOperationResult;
+  return (
+    isMemory(value) &&
+    isStringArray(candidate.source_memory_ids) &&
+    isOneOf(candidate.operation, ["compress", "distill"] as const)
   );
 }
 
@@ -373,5 +415,30 @@ export function retrieveMemory(query: {
     "/api/memory-retrieval",
     (value): value is { data: RetrievalResult } => isRecord(value) && isRetrieval(value.data),
     { method: "POST", body: query },
+  ).then((response) => response.data);
+}
+
+export function compressMemories(payload: MemoryCompressPayload): Promise<MemoryOperationResult> {
+  return requestJson<{ data: MemoryOperationResult }>(
+    "/api/memories/operations/compress",
+    (value): value is { data: MemoryOperationResult } =>
+      isRecord(value) && isMemoryOperation(value.data),
+    { method: "POST", body: payload },
+  ).then((response) => response.data);
+}
+
+export function distillMemories(payload: MemoryDistillPayload): Promise<MemoryOperationResult> {
+  return requestJson<{ data: MemoryOperationResult }>(
+    "/api/memories/operations/distill",
+    (value): value is { data: MemoryOperationResult } =>
+      isRecord(value) && isMemoryOperation(value.data),
+    { method: "POST", body: payload },
+  ).then((response) => response.data);
+}
+
+export function getMemoryGraph(query: MemoryGraphQuery = {}): Promise<MemoryGraph> {
+  return requestJson<{ data: MemoryGraph }>(
+    `/api/memories/graph${buildQueryString({ ...query })}`,
+    (value): value is { data: MemoryGraph } => isRecord(value) && isMemoryGraph(value.data),
   ).then((response) => response.data);
 }

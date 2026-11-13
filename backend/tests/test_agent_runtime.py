@@ -212,6 +212,7 @@ def test_agent_runtime_submits_only_validated_candidates_to_task_system() -> Non
         "get_environment_state",
         "retrieve_memory",
         "query_history",
+        "query_events",
         "get_device_state",
         "control_device",
     }

@@ -24,6 +24,10 @@
 | Phase 9 | 自动化与通知 | 提供 Arvuno 上下文通知和少量低风险自动化 | 是 |
 | Phase 10 | 稳定化验收 | 完成第一阶段验收 | 是 |
 
+## 当前 ARS 阶段状态
+
+REPAIR-01 修复和软件能力补齐完成后，ARS-02 至 ARS-06 的软件层能力已大幅推进（Memory 压缩与知识提炼、Reasoning AI 候选、多步 Planning、Proactive L3、Active Perception 受控集成、Multimodal Provider 契约、Privacy Erasure、Robot 固件协议契约与 Simulator、对应前端管理页），后端全量 502 个测试通过。但各阶段均未关闭：ARS-02 至 ARS-06 保持原有阶段状态，真实 ESP32/ESPHome、真实 Home Assistant、真实模型、真实摄像头/麦克风/扬声器、真实机器人硬件/固件、真实浏览器矩阵和生产备份演练仍未验收。分阶段完成度估计和逐项缺口见 [38-software-completion-audit-report.md](38-software-completion-audit-report.md)，本轮交付边界见 [39-software-delivery-acceptance-report.md](39-software-delivery-acceptance-report.md)。
+
 ## Phase 0：架构确认
 
 ### 目标

@@ -309,6 +309,21 @@ class MemoryRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to save a procedure version.") from exc
 
+    def procedure_versions_for_tool(self, tool_name: str) -> list[MemoryProcedureVersion]:
+        try:
+            return list(
+                self._session.scalars(
+                    select(MemoryProcedureVersion)
+                    .where(
+                        MemoryProcedureVersion.tool_name == tool_name,
+                        MemoryProcedureVersion.status != "retired",
+                    )
+                    .order_by(MemoryProcedureVersion.created_at.desc())
+                )
+            )
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read procedure versions for a tool.") from exc
+
     def add_procedure_validation(
         self,
         validation: MemoryProcedureValidation,

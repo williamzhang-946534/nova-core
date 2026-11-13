@@ -427,7 +427,12 @@ def test_successful_task_correlates_task_tool_robot_and_events(tmp_path: Path) -
         assert robot_request.tool_execution_id == execution.id
         assert robot_request.correlation_id == task.id
         assert robot_request.status.value == "succeeded"
-        assert robot_request.result == {"spoken": "Hello from the safety chain."}
+        assert robot_request.result == {
+            "spoken": "Hello from the safety chain.",
+            "mock_only": True,
+            "simulator_only": True,
+            "protocol_version": "1.0",
+        }
 
         robot_events = asyncio.run(
             environment.robot_service.events(environment.robot_id, task_request_id=request_id)

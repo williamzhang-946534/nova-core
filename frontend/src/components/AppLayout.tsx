@@ -3,8 +3,11 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   ApiOutlined,
   BellOutlined,
+  BulbOutlined,
   DashboardOutlined,
+  DeploymentUnitOutlined,
   CommentOutlined,
+  HistoryOutlined,
   HomeOutlined,
   RobotOutlined,
   DatabaseOutlined,
@@ -57,9 +60,57 @@ export default function AppLayout() {
               label: <Link to="/events">事件</Link>,
             },
             {
+              key: "/history",
+              icon: <HistoryOutlined />,
+              label: <Link to="/history">历史</Link>,
+            },
+            {
+              key: "/state-estimates",
+              icon: <DeploymentUnitOutlined />,
+              label: <Link to="/state-estimates">状态投影</Link>,
+            },
+            {
               key: "/memory",
               icon: <DatabaseOutlined />,
               label: <Link to="/memory">记忆</Link>,
+            },
+            {
+              key: "intelligence",
+              icon: <BulbOutlined />,
+              label: "智能",
+              children: [
+                {
+                  key: "/reasoning",
+                  label: <Link to="/reasoning">推理</Link>,
+                },
+                {
+                  key: "/planning",
+                  label: <Link to="/planning">规划</Link>,
+                },
+                {
+                  key: "/proactive",
+                  label: <Link to="/proactive">主动建议</Link>,
+                },
+                {
+                  key: "/active-perception",
+                  label: <Link to="/active-perception">主动感知</Link>,
+                },
+              ],
+            },
+            {
+              key: "governance",
+              icon: <DatabaseOutlined />,
+              label: "治理",
+              children: [
+                {
+                  key: "/retention",
+                  label: <Link to="/retention">数据保留</Link>,
+                },
+                {
+                  key: "/multimodal",
+                  label: <Link to="/multimodal">多模态</Link>,
+                },
+              ],
             },
             {
               key: "/chat",

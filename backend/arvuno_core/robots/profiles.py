@@ -132,7 +132,10 @@ def infer_robot_profile(
 ) -> RobotProfileName:
     if profile is not None:
         return RobotProfileName(profile)
-    if "desktop" in model.lower() or adapter_id == "mock_robot":
+    if "desktop" in model.lower() or adapter_id in {
+        "mock_robot",
+        "desktop_firmware_simulator",
+    }:
         return RobotProfileName.DESKTOP_ROBOT
     return RobotProfileName.MOBILE_ROBOT
 

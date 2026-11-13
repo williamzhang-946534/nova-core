@@ -11,6 +11,10 @@ Arvuno 的测试重点不是追求覆盖率数字，而是保证真实世界操�
 5. 设备控制可验证。
 6. 失败场景能安全停止。
 
+## 当前测试基线
+
+当前后端全量 pytest 为 **502 passed**（较 REPAIR-01 基线新增 34 个用例），Ruff lint/format、compileall、pip check、前端 TypeScript/Prettier/Vitest/Vite build 全部通过。本轮新增测试覆盖：Privacy Erasure、Multimodal Provider 契约、Reasoning AI 候选、Robot 固件协议、20/50/200 传感器规模性能，以及 Tool Executor 自动 Procedure Validation。Mock、Simulator 和 Contract Test 结果只代表软件层验证，不等价于真实硬件验收。最新交付结果见 [39-software-delivery-acceptance-report.md](39-software-delivery-acceptance-report.md)。
+
 ## 测试分层
 
 ```text

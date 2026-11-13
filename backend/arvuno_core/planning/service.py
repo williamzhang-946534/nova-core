@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections import defaultdict, deque
 from collections.abc import Callable
@@ -9,6 +10,8 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from arvuno_core.agent_runtime.models import AgentToolDescriptor
+from arvuno_core.ai.models import ProviderMessage, ProviderMessageRole, ProviderRequest
+from arvuno_core.ai.provider import AIProvider
 from arvuno_core.devices.errors import DeviceUnavailableError
 from arvuno_core.devices.models import DeviceActionName, DeviceStateName
 from arvuno_core.devices.registry import RegisteredDevice
@@ -21,7 +24,7 @@ from arvuno_core.planning.errors import (
     PlanNotFoundError,
     PlanValidationError,
 )
-from arvuno_core.planning.models import PlanView
+from arvuno_core.planning.models import AIPlanCandidateOutput, AIPlanStepCandidate, PlanView
 from arvuno_core.schemas.planning import (
     GoalCompileRequest,
     PlanCreateRequest,
@@ -70,11 +73,13 @@ class PlanningService:
         device_service: DeviceServiceProtocol,
         *,
         environment_name: str = "home",
+        ai_provider: AIProvider | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._tool_catalog = tool_catalog
         self._task_system = task_system
         self._device_service = device_service
+        self._ai_provider = ai_provider
         self._environment_name = environment_name
 
     async def compile_goal(self, request: GoalCompileRequest) -> Goal:
@@ -248,7 +253,17 @@ class PlanningService:
         current_goal = await self.get_goal(goal_id)
         if current_goal.status != "active":
             raise PlanningStateError("Plans can only be generated for an active goal.")
-        draft = await self._draft_plan(goal_id, current_goal, request.reasoning_session_id, now)
+        if request.use_ai_candidate and self._is_investigation_goal(current_goal):
+            if self._ai_provider is None:
+                raise PlanningStateError("The AI planning candidate provider is not configured.")
+            draft = await self._ai_investigation_plan(
+                goal_id,
+                current_goal,
+                request.reasoning_session_id,
+                now,
+            )
+        else:
+            draft = await self._draft_plan(goal_id, current_goal, request.reasoning_session_id, now)
         errors = await self._validate(draft, current_goal)
         if errors:
             draft.status = "rejected"
@@ -633,6 +648,156 @@ class PlanningService:
                     depends_on=[control_id],
                 ),
             ],
+        )
+
+    @staticmethod
+    def _is_investigation_goal(goal: Goal) -> bool:
+        desired = goal.desired_state
+        return (
+            desired.get("device_id") is None
+            and desired.get("state") is None
+            and desired.get("action") is None
+        )
+
+    async def _ai_investigation_plan(
+        self,
+        goal_id: str,
+        goal: Goal,
+        reasoning_session_id: str | None,
+        now: datetime,
+    ) -> Plan:
+        assert self._ai_provider is not None
+        request = await self._ai_plan_request(goal)
+        try:
+            response = await self._ai_provider.generate(request)
+            candidate = AIPlanCandidateOutput.model_validate(response.output)
+        except Exception as exc:
+            raise PlanningStateError(
+                "The AI planning candidate could not be validated.",
+                details={"reason": type(exc).__name__},
+            ) from exc
+        descriptors = {item.name: item for item in await self._tool_catalog.catalog()}
+        validated_steps: list[tuple[AIPlanStepCandidate, AgentToolDescriptor, dict[str, Any]]] = []
+        seen_tools: set[str] = set()
+        for step in candidate.steps:
+            descriptor = descriptors.get(step.tool_name)
+            if descriptor is None:
+                raise PlanningStateError(
+                    "The AI plan selected an unavailable tool.",
+                    details={"tool_name": step.tool_name},
+                )
+            if descriptor.risk_level != "read_only":
+                raise PlanningStateError(
+                    "AI investigation plans may contain read-only tools only.",
+                    details={"tool_name": step.tool_name, "risk_level": descriptor.risk_level},
+                )
+            if step.tool_name in seen_tools:
+                raise PlanningStateError(
+                    "The AI plan selected the same tool more than once.",
+                    details={"tool_name": step.tool_name},
+                )
+            seen_tools.add(step.tool_name)
+            try:
+                call = await self._tool_catalog.validate(step.tool_name, step.input)
+            except Exception as exc:
+                raise PlanningStateError(
+                    "The AI plan generated invalid tool parameters.",
+                    details={"tool_name": step.tool_name, "reason": type(exc).__name__},
+                ) from exc
+            validated_steps.append((step, descriptor, call.input))
+
+        step_ids = [str(uuid4()) for _ in validated_steps]
+        steps = []
+        for index, (candidate_step, descriptor, validated_input) in enumerate(validated_steps):
+            dependencies = []
+            for dependency_index in candidate_step.depends_on:
+                if dependency_index < 0 or dependency_index >= index:
+                    raise PlanningStateError(
+                        "The AI plan contains an invalid or cyclic dependency.",
+                        details={"step_index": index, "dependency_index": dependency_index},
+                    )
+                dependencies.append(step_ids[dependency_index])
+            steps.append(
+                PlanStep(
+                    id=step_ids[index],
+                    step_index=index,
+                    name=candidate_step.name,
+                    purpose=candidate_step.purpose,
+                    tool_name=descriptor.name,
+                    input=validated_input,
+                    expected_effect={"type": "structured_tool_output"},
+                    postconditions={"investigation_input_collected": True},
+                    verification={"type": "tool_output"},
+                    risk_level="read_only",
+                    requires_confirmation=False,
+                    retry_policy={"automatic": False, "reason": "read_only_investigation"},
+                    on_failure="stop",
+                    depends_on=dependencies,
+                )
+            )
+        return Plan(
+            id=str(uuid4()),
+            environment_id="pending",
+            goal_id=goal_id,
+            reasoning_session_id=reasoning_session_id,
+            version=0,
+            status="draft",
+            planner_type="hybrid",
+            run_mode="suggest_only",
+            strategy={
+                "selection_basis": candidate.strategy,
+                "ai_candidate_provider": response.provider,
+                "ai_candidate_model": response.model,
+                "ai_provider_log_id": response.provider_log_id,
+                "validation_basis": "read_only_tool_catalog_and_deterministic_dag",
+            },
+            constraints=goal.constraints,
+            max_risk_level="read_only",
+            estimated_duration={"seconds": 5 * len(steps), "basis": "read_only_tool_calls"},
+            resource_requirements={"read_only_tools": sorted(seen_tools)},
+            success_criteria=[{"type": "investigation_completed"}],
+            failure_policy={
+                "on_step_failure": "stop",
+                "on_timeout": "stop",
+                "automatic_retry": False,
+            },
+            created_at=now,
+            updated_at=now,
+            steps=steps,
+        )
+
+    async def _ai_plan_request(self, goal: Goal) -> ProviderRequest:
+        tools = await self._tool_catalog.catalog()
+        read_only_tools = [item for item in tools if item.risk_level == "read_only"]
+        system = (
+            "You are a read-only investigation planner for Arvuno Core. Select only listed "
+            "read-only tools, provide valid tool inputs, and produce an acyclic plan with "
+            "at most eight steps. Never propose control, robot, multimodal capture, or "
+            "write actions. Return exactly the requested JSON object."
+        )
+        payload = {
+            "goal": self._goal_snapshot(goal),
+            "available_tools": [
+                {
+                    "name": item.name,
+                    "description": item.description,
+                    "input_schema": item.input_schema,
+                }
+                for item in read_only_tools
+            ],
+            "output_contract": AIPlanCandidateOutput.model_json_schema(),
+        }
+        return ProviderRequest(
+            request_kind="planning_ai_investigation",
+            messages=[
+                ProviderMessage(role=ProviderMessageRole.SYSTEM, content=system),
+                ProviderMessage(
+                    role=ProviderMessageRole.USER,
+                    content=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                ),
+            ],
+            response_schema=AIPlanCandidateOutput.model_json_schema(),
+            correlation_id=goal.id,
         )
 
     async def _validate(self, plan: Plan, goal: Goal) -> list[dict[str, Any]]:

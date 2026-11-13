@@ -880,6 +880,7 @@ EXPECTED_COLUMNS = {
         "id",
         "memory_id",
         "version",
+        "tool_name",
         "steps",
         "input_schema",
         "output_schema",

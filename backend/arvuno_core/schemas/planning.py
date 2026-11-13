@@ -41,6 +41,7 @@ class PlanCreateRequest(BaseModel):
     mode: Literal["analyze", "suggest", "plan"] = "plan"
     reasoning_session_id: str | None = Field(default=None, min_length=1, max_length=36)
     auto_execute: bool = False
+    use_ai_candidate: bool = False
     now: AwareDatetime | None = None
 
 

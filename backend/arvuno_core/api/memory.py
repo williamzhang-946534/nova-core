@@ -8,11 +8,16 @@ from arvuno_core.memory.service import MemoryService
 from arvuno_core.schemas.memory import (
     HistoryReferenceListData,
     MemoryCleanupWrapper,
+    MemoryCompressRequest,
     MemoryCorrectRequest,
     MemoryCreateRequest,
     MemoryData,
     MemoryDeleteWrapper,
+    MemoryDistillRequest,
+    MemoryGraphData,
+    MemoryGraphQuery,
     MemoryListData,
+    MemoryOperationData,
     MemoryProcedureData,
     MemoryProcedureValidationRequest,
     MemoryProcedureVersionRequest,
@@ -94,6 +99,53 @@ async def cleanup_memories(
     service: Annotated[MemoryService, Depends(get_memory_service)],
 ) -> MemoryCleanupWrapper:
     return MemoryCleanupWrapper(data=await service.cleanup())
+
+
+@router.post("/operations/compress", response_model=MemoryOperationData, status_code=201)
+async def compress_memories(
+    request: MemoryCompressRequest,
+    service: Annotated[MemoryService, Depends(get_memory_service)],
+) -> MemoryOperationData:
+    memory, sources = await service.compress_memories(request)
+    return MemoryOperationData(
+        data=memory,
+        source_memory_ids=sources,
+        operation="compress",
+    )
+
+
+@router.post("/operations/distill", response_model=MemoryOperationData, status_code=201)
+async def distill_memories(
+    request: MemoryDistillRequest,
+    service: Annotated[MemoryService, Depends(get_memory_service)],
+) -> MemoryOperationData:
+    memory, sources = await service.distill_memories(request)
+    return MemoryOperationData(
+        data=memory,
+        source_memory_ids=sources,
+        operation="distill",
+    )
+
+
+@router.get("/graph", response_model=MemoryGraphData)
+async def memory_graph(
+    service: Annotated[MemoryService, Depends(get_memory_service)],
+    memory_type: MemoryType | None = None,
+    keyword: str | None = Query(default=None, max_length=200),
+    space_id: str | None = Query(default=None, max_length=36),
+    entity_id: str | None = Query(default=None, max_length=36),
+    max_memories: int = Query(default=100, ge=1, le=100),
+) -> MemoryGraphData:
+    graph = await service.memory_graph(
+        MemoryGraphQuery(
+            memory_type=memory_type,
+            keyword=keyword,
+            space_id=space_id,
+            entity_id=entity_id,
+            max_memories=max_memories,
+        )
+    )
+    return MemoryGraphData(data=graph)
 
 
 @router.get("/{memory_id}", response_model=MemoryData)

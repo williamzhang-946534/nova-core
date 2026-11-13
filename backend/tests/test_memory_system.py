@@ -12,9 +12,14 @@ from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.models import (
     Conversation,
     ConversationMessage,
+    Entity,
+    Environment,
     Event,
     MemoryAccessLog,
     MemoryEvidence,
+    MemoryProcedureValidation,
+    MemoryProcedureVersion,
+    Space,
     Task,
 )
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -232,6 +237,240 @@ def test_memory_list_filters_and_retrieval_includes_sources(
     result = retrieval.json()["data"]
     assert [item["id"] for item in result["memories"]] == [semantic["id"]]
     assert result["source_references"] == []
+    assert result["retrieval_strategy"] == "bounded_lexical_hybrid"
+
+
+def test_memory_compression_creates_reviewable_candidate_without_deleting_sources(
+    manager: DatabaseManager,
+    tmp_path: Path,
+) -> None:
+    client = client_for(manager, tmp_path)
+    headers = {"Authorization": "Bearer test-api-token"}
+    first = client.post(
+        "/api/memories",
+        headers=headers,
+        json=memory_payload(
+            memory_type="episodic",
+            title="Morning light event",
+            content="The kitchen light turned on at 07:00.",
+            source_type="event",
+            source_id="event-morning",
+            user_confirmed=False,
+            subject_type=None,
+            subject_id=None,
+            predicate=None,
+            object_value=None,
+            evidence=[
+                {
+                    "evidence_type": "user_statement",
+                    "source_type": "user",
+                    "source_record_id": "statement-1",
+                }
+            ],
+        ),
+    ).json()["data"]
+    second = client.post(
+        "/api/memories",
+        headers=headers,
+        json=memory_payload(
+            memory_type="episodic",
+            title="Morning door event",
+            content="The kitchen door was opened at 07:05.",
+            source_type="event",
+            source_id="event-door",
+            user_confirmed=False,
+            subject_type=None,
+            subject_id=None,
+            predicate=None,
+            object_value=None,
+            entity_id=None,
+        ),
+    ).json()["data"]
+
+    response = client.post(
+        "/api/memories/operations/compress",
+        headers=headers,
+        json={"memory_ids": [first["id"], second["id"]], "expires_in_days": 14},
+    )
+
+    assert response.status_code == 201
+    operation = response.json()["data"]
+    candidate = operation
+    assert candidate["scope"]["source_memory_ids"] == [first["id"], second["id"]]
+    assert candidate["source_type"] == "system"
+    assert candidate["status"] == "candidate"
+    assert candidate["verification_status"] == "unverified"
+    assert candidate["scope"]["source_memory_ids"] == [first["id"], second["id"]]
+    assert candidate["scope"]["copied_evidence_count"] == 1
+    assert (
+        client.get(
+            f"/api/memories/{first['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            f"/api/memories/{second['id']}",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+
+
+def test_memory_distillation_requires_confirmed_sources_and_stays_candidate(
+    manager: DatabaseManager,
+    tmp_path: Path,
+) -> None:
+    client = client_for(manager, tmp_path)
+    headers = {"Authorization": "Bearer test-api-token"}
+    unconfirmed = client.post(
+        "/api/memories",
+        headers=headers,
+        json=memory_payload(
+            memory_type="episodic",
+            title="User cleaned the desk",
+            content="The user cleaned the desk at 18:00.",
+            source_type="user",
+            source_id="statement-clean",
+            user_confirmed=False,
+            subject_type=None,
+            subject_id=None,
+            predicate=None,
+            object_value=None,
+        ),
+    ).json()["data"]
+    confirmed = client.post(
+        "/api/memories",
+        headers=headers,
+        json=memory_payload(
+            memory_type="episodic",
+            title="User watered the plant",
+            content="The user watered the plant at 19:00.",
+            source_type="user",
+            source_id="statement-water",
+            user_confirmed=True,
+            subject_type=None,
+            subject_id=None,
+            predicate=None,
+            object_value=None,
+        ),
+    ).json()["data"]
+    rejected = client.post(
+        "/api/memories/operations/distill",
+        headers=headers,
+        json={
+            "memory_ids": [unconfirmed["id"]],
+            "subject_type": "person",
+            "subject_id": "local_user",
+            "predicate": "routinely_does",
+            "object_value": "clean_desk",
+        },
+    )
+    generated = client.post(
+        "/api/memories/operations/distill",
+        headers=headers,
+        json={
+            "memory_ids": [confirmed["id"]],
+            "subject_type": "person",
+            "subject_id": "local_user",
+            "predicate": "routinely_does",
+            "object_value": "water_plant",
+        },
+    )
+
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["code"] == "MEMORY_VALIDATION_ERROR"
+    assert generated.status_code == 201
+    operation = generated.json()["data"]
+    candidate = operation
+    assert candidate["memory_type"] == "semantic"
+    assert candidate["status"] == "candidate"
+    assert candidate["verification_status"] == "unverified"
+    assert candidate["subject_type"] == "person"
+    assert candidate["predicate"] == "routinely_does"
+    assert candidate["scope"]["source_memory_ids"] == [confirmed["id"]]
+
+
+def test_memory_graph_projects_existing_relations(
+    manager: DatabaseManager,
+    tmp_path: Path,
+) -> None:
+    client = client_for(manager, tmp_path)
+    headers = {"Authorization": "Bearer test-api-token"}
+    with manager.session_factory() as db:
+        environment = db.scalars(select(Environment).limit(1)).one()
+        db.add(
+            Space(
+                id="11111111-1111-4111-8111-111111111111",
+                space_type="room",
+                name="Living room",
+                normalized_name="living room",
+                slug="living-room",
+                path="/living-room",
+                sort_order=1,
+                status="active",
+                metadata_summary={},
+            )
+        )
+        db.add(
+            Entity(
+                id="22222222-2222-4222-8222-222222222222",
+                environment_id=environment.id,
+                entity_type="device",
+                name="Ceiling light",
+                normalized_name="ceiling light",
+                status="active",
+                semantic_tags=["light"],
+                metadata_summary={},
+            )
+        )
+        db.add(
+            Task(
+                id="33333333-3333-4333-8333-333333333333",
+                task_type="routine",
+                title="Setup",
+                status="completed",
+                origin="user",
+                plan={},
+            )
+        )
+        db.commit()
+    memory = client.post(
+        "/api/memories",
+        headers=headers,
+        json=memory_payload(
+            space_id="11111111-1111-4111-8111-111111111111",
+            entity_id="22222222-2222-4222-8222-222222222222",
+            task_id="33333333-3333-4333-8333-333333333333",
+        ),
+    ).json()["data"]
+
+    response = client.get("/api/memories/graph", headers=headers)
+
+    assert response.status_code == 200
+    graph = response.json()["data"]
+    node_types = {node["id"]: node["node_type"] for node in graph["nodes"]}
+    relations = {(edge["source"], edge["target"], edge["relation"]) for edge in graph["edges"]}
+    assert node_types[f"memory:{memory['id']}"] == "memory"
+    assert node_types["space:11111111-1111-4111-8111-111111111111"] == "space"
+    assert node_types["entity:22222222-2222-4222-8222-222222222222"] == "entity"
+    assert node_types["task:33333333-3333-4333-8333-333333333333"] == "task"
+    assert (
+        f"memory:{memory['id']}",
+        "space:11111111-1111-4111-8111-111111111111",
+        "located_in",
+    ) in relations
+    assert (
+        f"memory:{memory['id']}",
+        "entity:22222222-2222-4222-8222-222222222222",
+        "about",
+    ) in relations
+    assert (
+        "task:33333333-3333-4333-8333-333333333333",
+        f"memory:{memory['id']}",
+        "recorded_by",
+    ) in relations
 
 
 def test_ai_inference_stays_an_expiring_candidate(
@@ -436,6 +675,110 @@ def test_procedure_requires_validations_before_retrieval(
     assert first_retrieval.json()["data"]["memories"] == []
     assert second_pass.json()["data"]["status"] == "validated"
     assert len(validated_retrieval.json()["data"]["memories"]) == 1
+
+
+def test_tool_executor_records_procedure_validation(
+    manager: DatabaseManager,
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        settings(tmp_path),
+        unit_of_work_factory=lambda: SqlAlchemyUnitOfWork(manager.session_factory),
+        initialize_tool_runtime=True,
+    )
+    headers = {"Authorization": "Bearer test-api-token"}
+    with TestClient(app) as client:
+        procedure = client.post(
+            "/api/memories",
+            headers=headers,
+            json=memory_payload(
+                memory_type="procedural",
+                title="Living room light control procedure",
+                content="Turn the living room light on and verify its state.",
+                source_type="task",
+                source_id="procedure-execution-1",
+                user_confirmed=False,
+            ),
+        ).json()["data"]
+        version_response = client.post(
+            f"/api/memories/{procedure['id']}/procedure-versions",
+            headers=headers,
+            json={
+                "version": "1.0",
+                "tool_name": "control_device",
+                "steps": [{"name": "turn_on_and_verify"}],
+                "risk_level": "low_risk",
+                "required_successes": 2,
+            },
+        )
+        devices = client.get("/api/devices", headers=headers).json()["data"]
+        device_id = next(
+            device["id"] for device in devices if device["name"] == "Virtual Living Room Light"
+        )
+        failed = client.post(
+            "/api/tasks",
+            headers=headers,
+            json={
+                "task_type": "procedure.validation.failed",
+                "title": "Invalid procedure execution",
+                "steps": [
+                    {
+                        "name": "control",
+                        "tool_name": "control_device",
+                        "input": {
+                            "device_id": device_id,
+                            "action": "turn_on",
+                            "parameters": {},
+                            "expected_state": "off",
+                        },
+                    }
+                ],
+            },
+        )
+        succeeded = client.post(
+            "/api/tasks",
+            headers=headers,
+            json={
+                "task_type": "procedure.validation.passed",
+                "title": "Valid procedure execution",
+                "steps": [
+                    {
+                        "name": "control",
+                        "tool_name": "control_device",
+                        "input": {
+                            "device_id": device_id,
+                            "action": "turn_on",
+                            "parameters": {},
+                        },
+                    }
+                ],
+            },
+        )
+        retrieved = client.post(
+            "/api/memory-retrieval",
+            headers=headers,
+            json={"question_type": "procedure", "query": "living room light control"},
+        )
+
+    assert version_response.status_code == 201
+    assert version_response.json()["data"]["tool_name"] == "control_device"
+    assert failed.json()["data"]["status"] == "failed"
+    assert succeeded.json()["data"]["status"] == "completed"
+    with manager.session_factory() as db:
+        validations = db.scalars(
+            select(MemoryProcedureValidation)
+            .join(
+                MemoryProcedureVersion,
+                MemoryProcedureValidation.procedure_version_id == MemoryProcedureVersion.id,
+            )
+            .where(MemoryProcedureVersion.memory_id == procedure["id"])
+            .order_by(MemoryProcedureValidation.validated_at)
+        ).all()
+    assert [item.status for item in validations] == ["failed", "passed"]
+    assert [item.validator_type for item in validations] == ["tool_executor", "tool_executor"]
+    assert validations[0].task_id == failed.json()["data"]["id"]
+    assert validations[1].task_id == succeeded.json()["data"]["id"]
+    assert retrieved.json()["data"]["memories"] == []
 
 
 def test_expired_memory_is_hidden_and_cleanup_expires_it(

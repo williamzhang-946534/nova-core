@@ -1114,6 +1114,7 @@ class MemoryProcedureVersion(Base):
         ForeignKey("memories.id", ondelete="CASCADE"),
     )
     version: Mapped[str] = mapped_column(String(50))
+    tool_name: Mapped[str | None] = mapped_column(String(255))
     steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     input_schema: Mapped[dict[str, Any]] = mapped_column(JSON)
     output_schema: Mapped[dict[str, Any]] = mapped_column(JSON)
@@ -1137,6 +1138,7 @@ class MemoryProcedureVersion(Base):
         ),
         CheckConstraint("required_successes > 0", name="ck_memory_procedure_versions_required"),
         Index("ix_memory_procedure_versions_memory_status", "memory_id", "status"),
+        Index("ix_memory_procedure_versions_tool_status", "tool_name", "status"),
     )
 
     memory: Mapped[Memory] = relationship()

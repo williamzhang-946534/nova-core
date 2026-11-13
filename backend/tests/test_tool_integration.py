@@ -244,6 +244,8 @@ def test_tools_api_requires_auth_and_executes_mock_tool(tmp_path: Path) -> None:
             "get_environment_state",
             "retrieve_memory",
             "query_history",
+            "query_events",
+            "active_perception_execute",
             "get_device_state",
             "control_device",
             "robot_observe_scene",

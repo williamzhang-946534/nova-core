@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from arvuno_core.ai.models import ProviderRequest, ProviderResponse, ProviderUsage
 from arvuno_core.config import Settings
 from arvuno_core.devices.mock import MockDeviceAdapter
 from arvuno_core.devices.registry import DeviceRegistry
@@ -47,6 +48,24 @@ class PlanningEnvironment:
     adapter: MockDeviceAdapter
     service: PlanningService
     task_service: TaskService
+
+
+class FixedPlanningProvider:
+    def __init__(self, output: dict[str, Any]) -> None:
+        self.output = output
+        self.requests: list[ProviderRequest] = []
+
+    async def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.requests.append(request)
+        return ProviderResponse(
+            provider="planning-test",
+            model="planning-model",
+            request_kind=request.request_kind,
+            output=self.output,
+            latency_ms=0,
+            usage=ProviderUsage(prompt_tokens=1, completion_tokens=1),
+            provider_log_id="planning-log",
+        )
 
 
 def phase_settings(tmp_path: Path) -> Settings:
@@ -246,6 +265,96 @@ def test_goal_authorization_is_capped_and_confirmation_cannot_expand_it(
 
             unchanged = await environment.service.get_goal(goal.id)
             assert unchanged.authorization_scope["max_risk_level"] == "low_risk"
+
+        asyncio.run(scenario())
+    finally:
+        environment.manager.dispose()
+
+
+def test_ai_investigation_plan_is_read_only_and_catalog_validated(tmp_path: Path) -> None:
+    environment = planning_environment(tmp_path)
+    provider = FixedPlanningProvider(
+        {
+            "strategy": "Collect current device inventory before human interpretation.",
+            "steps": [
+                {
+                    "name": "List available devices",
+                    "purpose": "Establish the available target set.",
+                    "tool_name": "list_devices",
+                    "input": {},
+                    "depends_on": [],
+                }
+            ],
+        }
+    )
+    environment.service._ai_provider = provider  # type: ignore[attr-defined]
+
+    try:
+
+        async def scenario() -> None:
+            goal = await _active_goal(environment.service, "请分析房间舒适度")
+            plan = await environment.service.create_plan(
+                goal.id,
+                PlanCreateRequest(mode="plan", use_ai_candidate=True),
+            )
+            assert plan.planner_type == "hybrid"
+            assert plan.max_risk_level == "read_only"
+            assert [step.tool_name for step in plan.steps] == ["list_devices"]
+            assert plan.steps[0].requires_confirmation is False
+            assert plan.strategy["ai_provider_log_id"] == "planning-log"
+            assert provider.requests[0].request_kind == "planning_ai_investigation"
+
+        asyncio.run(scenario())
+    finally:
+        environment.manager.dispose()
+
+
+def test_ai_plan_rejects_write_tool_and_cyclic_dependencies(tmp_path: Path) -> None:
+    environment = planning_environment(tmp_path)
+
+    try:
+
+        async def scenario() -> None:
+            goal = await _active_goal(environment.service, "请分析房间舒适度")
+            environment.service._ai_provider = FixedPlanningProvider(  # type: ignore[attr-defined]
+                {
+                    "strategy": "Unsafe model proposal.",
+                    "steps": [
+                        {
+                            "name": "Control a device",
+                            "purpose": "Attempt to exceed the investigation boundary.",
+                            "tool_name": "control_device",
+                            "input": {"device_id": "does-not-matter"},
+                            "depends_on": [],
+                        }
+                    ],
+                }
+            )
+            with pytest.raises(PlanningStateError, match="read-only tools only"):
+                await environment.service.create_plan(
+                    goal.id,
+                    PlanCreateRequest(mode="plan", use_ai_candidate=True),
+                )
+
+            environment.service._ai_provider = FixedPlanningProvider(  # type: ignore[attr-defined]
+                {
+                    "strategy": "Cyclic model proposal.",
+                    "steps": [
+                        {
+                            "name": "List devices",
+                            "purpose": "Investigate the current set.",
+                            "tool_name": "list_devices",
+                            "input": {},
+                            "depends_on": [0],
+                        }
+                    ],
+                }
+            )
+            with pytest.raises(PlanningStateError, match="invalid or cyclic dependency"):
+                await environment.service.create_plan(
+                    goal.id,
+                    PlanCreateRequest(mode="plan", use_ai_candidate=True),
+                )
 
         asyncio.run(scenario())
     finally:

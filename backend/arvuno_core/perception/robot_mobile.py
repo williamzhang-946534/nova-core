@@ -32,6 +32,7 @@ DEFAULT_LOCATION = {
     "yaw": 0,
     "position_confidence": 0.8,
 }
+SIMULATED_ROBOT_ADAPTER_IDS = {"mock_robot", "desktop_firmware_simulator"}
 
 
 class RobotMobilePerceptionError(ArvunoError):
@@ -233,7 +234,7 @@ class RobotMobilePerceptionService:
                 current_plan,
                 media_handle,
                 now,
-                mock_only=readiness.get("adapter_id") == "mock_robot",
+                mock_only=(readiness.get("adapter_id") in SIMULATED_ROBOT_ADAPTER_IDS),
             )
 
         fulfilled = await self._active_perception_service.execute(
@@ -334,7 +335,7 @@ class RobotMobilePerceptionService:
             "capabilities": ["navigate_to", "observe"],
             "perception_cost": 8.0,
             "default_observation_location": location,
-            "mock_only": readiness.get("adapter_id") == "mock_robot",
+            "mock_only": readiness.get("adapter_id") in SIMULATED_ROBOT_ADAPTER_IDS,
         }
         if isinstance(allowed_space_ids, list):
             source_config["allowed_space_ids"] = allowed_space_ids
@@ -456,7 +457,7 @@ class RobotMobilePerceptionService:
                             "navigate_to": readiness["navigate_to_ready"],
                             "observe": readiness["observe_ready"],
                         },
-                        "mock_only": readiness.get("adapter_id") == "mock_robot",
+                        "mock_only": (readiness.get("adapter_id") in SIMULATED_ROBOT_ADAPTER_IDS),
                         "created_at": self._utc_clock().isoformat(),
                     }
                 unit_of_work.perception.mark(row)

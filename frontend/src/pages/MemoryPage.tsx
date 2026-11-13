@@ -19,6 +19,7 @@ import {
   Tabs,
   Tag,
 } from "antd";
+import { Alert } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   DeleteOutlined,
@@ -36,6 +37,7 @@ import PageLoading from "@/components/PageLoading";
 import StatusTag from "@/components/StatusTag";
 import {
   cleanupMemories,
+  compressMemories,
   confirmMemory,
   confirmPreference,
   correctMemory,
@@ -43,7 +45,9 @@ import {
   createPreference,
   deleteMemory,
   deletePreference,
+  distillMemories,
   getMemory,
+  getMemoryGraph,
   listMemories,
   listPreferences,
   memoryHistory,
@@ -52,6 +56,7 @@ import {
   updatePreference,
 } from "@/api/memory";
 import type {
+  MemoryGraph,
   MemoryItem,
   MemorySourceType,
   MemoryStatus,
@@ -94,6 +99,22 @@ interface PreferenceEditFormValues {
   category?: string;
   description?: string;
   expires_at?: string;
+}
+
+interface CompressFormValues {
+  title?: string;
+  summary?: string;
+  expires_in_days: number;
+}
+
+interface DistillFormValues {
+  title?: string;
+  summary?: string;
+  subject_type: string;
+  subject_id: string;
+  predicate: string;
+  object_text: string;
+  expires_in_days: number;
 }
 
 const typeLabels: Record<MemoryType, string> = {
@@ -156,6 +177,12 @@ export default function MemoryPage() {
   const [createMemoryOpen, setCreateMemoryOpen] = useState(false);
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | undefined>();
   const [correctingMemory, setCorrectingMemory] = useState<MemoryItem | undefined>();
+  const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
+  const [compressOpen, setCompressOpen] = useState(false);
+  const [distillOpen, setDistillOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("memories");
+  const [graphType, setGraphType] = useState<MemoryType | undefined>();
+  const [graphKeyword, setGraphKeyword] = useState("");
 
   const [preferencePage, setPreferencePage] = useState(1);
   const [preferencePageSize, setPreferencePageSize] = useState(20);
@@ -173,6 +200,8 @@ export default function MemoryPage() {
   const [preferenceForm] = Form.useForm<PreferenceFormValues>();
   const [preferenceEditForm] = Form.useForm<PreferenceEditFormValues>();
   const [correctForm] = Form.useForm<{ content: string; reason?: string }>();
+  const [compressForm] = Form.useForm<CompressFormValues>();
+  const [distillForm] = Form.useForm<DistillFormValues>();
 
   const memoriesQuery = useQuery({
     queryKey: [
@@ -230,6 +259,15 @@ export default function MemoryPage() {
     queryFn: () => memoryHistory(selectedMemoryId as string),
     enabled: selectedMemoryId !== undefined,
   });
+  const graphQuery = useQuery({
+    queryKey: ["memory-graph", graphType, graphKeyword],
+    queryFn: () =>
+      getMemoryGraph({
+        memory_type: graphType,
+        keyword: graphKeyword.trim().length > 0 ? graphKeyword.trim() : undefined,
+      }),
+    enabled: activeTab === "graph",
+  });
 
   const retrieveMutation = useMutation({
     mutationFn: () =>
@@ -243,6 +281,42 @@ export default function MemoryPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["memories"] });
       void queryClient.invalidateQueries({ queryKey: ["memory-preferences"] });
+    },
+  });
+  const compressMutation = useMutation({
+    mutationFn: (values: CompressFormValues) =>
+      compressMemories({
+        memory_ids: selectedMemoryIds,
+        title: values.title,
+        summary: values.summary,
+        expires_in_days: values.expires_in_days,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["memories"] });
+      void queryClient.invalidateQueries({ queryKey: ["memory-graph"] });
+      setCompressOpen(false);
+      setSelectedMemoryIds([]);
+      void compressForm.resetFields();
+    },
+  });
+  const distillMutation = useMutation({
+    mutationFn: (values: DistillFormValues) =>
+      distillMemories({
+        memory_ids: selectedMemoryIds,
+        title: values.title,
+        summary: values.summary,
+        subject_type: values.subject_type,
+        subject_id: values.subject_id,
+        predicate: values.predicate,
+        object_value: objectFromText(values.object_text),
+        expires_in_days: values.expires_in_days,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["memories"] });
+      void queryClient.invalidateQueries({ queryKey: ["memory-graph"] });
+      setDistillOpen(false);
+      setSelectedMemoryIds([]);
+      void distillForm.resetFields();
     },
   });
   const createMemoryMutation = useMutation({
@@ -545,6 +619,7 @@ export default function MemoryPage() {
   ];
 
   const selectedMemory = memoryDetailQuery.data;
+  const graph: MemoryGraph | undefined = graphQuery.data;
 
   if (memoriesQuery.isPending || preferencesQuery.isPending) {
     return <PageLoading text="正在读取记忆..." />;
@@ -597,6 +672,8 @@ export default function MemoryPage() {
       {confirmMemoryMutation.isError ? <ApiErrorAlert error={confirmMemoryMutation.error} /> : null}
       {correctMemoryMutation.isError ? <ApiErrorAlert error={correctMemoryMutation.error} /> : null}
       {deleteMemoryMutation.isError ? <ApiErrorAlert error={deleteMemoryMutation.error} /> : null}
+      {compressMutation.isError ? <ApiErrorAlert error={compressMutation.error} /> : null}
+      {distillMutation.isError ? <ApiErrorAlert error={distillMutation.error} /> : null}
 
       <Card title="记忆检索">
         <div className="memory-retrieval">
@@ -642,7 +719,8 @@ export default function MemoryPage() {
       </Card>
 
       <Tabs
-        defaultActiveKey="memories"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           {
             key: "memories",
@@ -710,9 +788,40 @@ export default function MemoryPage() {
                     </Checkbox>
                   </Space>
                 </Card>
-                <Card title={`记忆（${memoriesQuery.data?.total ?? 0}）`}>
+                <Card
+                  title={`记忆（${memoriesQuery.data?.total ?? 0}）`}
+                  extra={
+                    <Space wrap>
+                      <Button
+                        icon={<FormOutlined />}
+                        disabled={selectedMemoryIds.length < 2}
+                        onClick={() => {
+                          void compressForm.setFieldsValue({ expires_in_days: 7 });
+                          setCompressOpen(true);
+                        }}
+                      >
+                        压缩候选
+                      </Button>
+                      <Button
+                        icon={<PlusOutlined />}
+                        disabled={selectedMemoryIds.length < 1}
+                        onClick={() => {
+                          void distillForm.setFieldsValue({ expires_in_days: 7 });
+                          setDistillOpen(true);
+                        }}
+                      >
+                        知识提炼
+                      </Button>
+                    </Space>
+                  }
+                >
                   <Table
                     rowKey="id"
+                    rowSelection={{
+                      selectedRowKeys: selectedMemoryIds,
+                      onChange: (selectedRowKeys) =>
+                        setSelectedMemoryIds(selectedRowKeys.map(String)),
+                    }}
                     columns={memoryColumns}
                     dataSource={memoriesQuery.data?.data ?? []}
                     loading={memoriesQuery.isFetching}
@@ -729,6 +838,80 @@ export default function MemoryPage() {
                     }}
                     locale={{ emptyText: <Empty description="暂无长期记忆" /> }}
                   />
+                </Card>
+              </>
+            ),
+          },
+          {
+            key: "graph",
+            label: "关系图",
+            children: (
+              <>
+                {graphQuery.isError ? (
+                  <ApiErrorAlert
+                    error={graphQuery.error}
+                    onRetry={() => void graphQuery.refetch()}
+                    retrying={graphQuery.isFetching}
+                  />
+                ) : null}
+                <Card>
+                  <Space className="filter-bar" wrap>
+                    <Select
+                      allowClear
+                      placeholder="记忆类型"
+                      value={graphType}
+                      onChange={setGraphType}
+                      options={Object.entries(typeLabels).map(([value, label]) => ({
+                        value,
+                        label,
+                      }))}
+                      className="fixed-select"
+                    />
+                    <Input
+                      allowClear
+                      placeholder="节点关键词"
+                      value={graphKeyword}
+                      onChange={(event) => setGraphKeyword(event.target.value)}
+                      onPressEnter={() => void graphQuery.refetch()}
+                    />
+                    <Button icon={<ReloadOutlined />} onClick={() => void graphQuery.refetch()}>
+                      刷新
+                    </Button>
+                  </Space>
+                </Card>
+                <Card
+                  title={graph ? `关系投影（${graph.nodes.length}）` : "关系投影"}
+                  extra={graph?.truncated ? <Tag color="orange">已截断</Tag> : null}
+                >
+                  {graphQuery.isPending ? (
+                    <PageLoading text="正在读取关系投影..." />
+                  ) : graph ? (
+                    <>
+                      <Descriptions size="small" column={3} bordered className="margin-bottom">
+                        <Descriptions.Item label="节点">{graph.nodes.length}</Descriptions.Item>
+                        <Descriptions.Item label="关系">{graph.edges.length}</Descriptions.Item>
+                        <Descriptions.Item label="生成时间">
+                          {formatDateTime(graph.generated_at)}
+                        </Descriptions.Item>
+                      </Descriptions>
+                      <Table
+                        rowKey="id"
+                        size="small"
+                        pagination={{ pageSize: 10, showSizeChanger: false }}
+                        dataSource={graph.nodes}
+                        columns={[
+                          { title: "ID", dataIndex: "id", width: 280, ellipsis: true },
+                          { title: "类型", dataIndex: "node_type", width: 110 },
+                          { title: "标签", dataIndex: "label", ellipsis: true },
+                          { title: "状态", dataIndex: "status", width: 120 },
+                        ]}
+                        locale={{ emptyText: <Empty description="暂无关系节点" /> }}
+                      />
+                      <div className="margin-top">
+                        <JsonBlock value={graph.edges} />
+                      </div>
+                    </>
+                  ) : null}
                 </Card>
               </>
             ),
@@ -997,6 +1180,99 @@ export default function MemoryPage() {
         </Form>
       </Modal>
 
+      <Modal
+        title="压缩情节记忆"
+        open={compressOpen}
+        onCancel={() => setCompressOpen(false)}
+        onOk={() => void compressForm.submit()}
+        confirmLoading={compressMutation.isPending}
+        destroyOnClose
+      >
+        <Alert
+          className="margin-bottom"
+          type="info"
+          showIcon
+          message={`已选择 ${selectedMemoryIds.length} 条来源；候选不会删除或覆盖源记忆。`}
+        />
+        <Form form={compressForm} layout="vertical" onFinish={handleSubmitCompression}>
+          <Form.Item name="title" label="候选标题">
+            <Input />
+          </Form.Item>
+          <Form.Item name="summary" label="候选摘要">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item
+            name="expires_in_days"
+            label="有效期（天）"
+            rules={[{ required: true, message: "请输入有效期" }]}
+          >
+            <InputNumber min={1} max={365} precision={0} className="number-input" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="提炼语义知识候选"
+        open={distillOpen}
+        onCancel={() => setDistillOpen(false)}
+        onOk={() => void distillForm.submit()}
+        confirmLoading={distillMutation.isPending}
+        destroyOnClose
+      >
+        <Alert
+          className="margin-bottom"
+          type="warning"
+          showIcon
+          message="提炼只能来自已确认且已验证的情节记忆；结果保持待审核候选。"
+        />
+        <Form form={distillForm} layout="vertical" onFinish={handleSubmitDistillation}>
+          <Form.Item name="title" label="候选标题">
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="subject_type"
+            label="主体类型"
+            rules={[{ required: true, message: "请输入主体类型" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="subject_id"
+            label="主体 ID"
+            rules={[{ required: true, message: "请输入主体 ID" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="predicate"
+            label="谓词"
+            rules={[{ required: true, message: "请输入谓词" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="object_text"
+            label="对象 JSON"
+            rules={[
+              { required: true, message: "请输入对象 JSON" },
+              { validator: (_, value: string | undefined) => isValidJson(value) },
+            ]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="summary" label="候选摘要">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item
+            name="expires_in_days"
+            label="有效期（天）"
+            rules={[{ required: true, message: "请输入有效期" }]}
+          >
+            <InputNumber min={1} max={365} precision={0} className="number-input" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       <Drawer
         title={selectedMemory?.title ?? "记忆详情"}
         width={720}
@@ -1146,6 +1422,14 @@ export default function MemoryPage() {
       content: values.content,
       reason: values.reason,
     });
+  }
+
+  function handleSubmitCompression(values: CompressFormValues) {
+    compressMutation.mutate(values);
+  }
+
+  function handleSubmitDistillation(values: DistillFormValues) {
+    distillMutation.mutate(values);
   }
 }
 

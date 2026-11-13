@@ -170,11 +170,30 @@ class GoalAnalysisData(BaseModel):
     data: dict[str, Any]
 
 
+class AIPlanStepCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
+    purpose: str = Field(min_length=1, max_length=2000)
+    tool_name: str = Field(min_length=1, max_length=255)
+    input: dict[str, Any] = Field(default_factory=dict)
+    depends_on: list[int] = Field(default_factory=list)
+
+
+class AIPlanCandidateOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: str = Field(min_length=1, max_length=2000)
+    steps: list[AIPlanStepCandidate] = Field(min_length=1, max_length=8)
+
+
 class ReplanningRecordData(BaseModel):
     data: ReplanningRecordView
 
 
 __all__ = [
+    "AIPlanCandidateOutput",
+    "AIPlanStepCandidate",
     "GoalData",
     "GoalListData",
     "GoalRevisionView",

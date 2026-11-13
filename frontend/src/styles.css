@@ -328,6 +328,11 @@ body {
   min-height: 180px;
 }
 
+.route-loading {
+  color: #595959;
+  padding: 32px 0;
+}
+
 .status-note {
   display: block;
   margin-top: 16px;

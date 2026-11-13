@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from arvuno_core.memory.models import (
     HistoryReference,
     MemoryEvidenceView,
+    MemoryGraph,
     MemoryRetrievalResult,
     MemoryRevisionView,
     MemorySourceType,
@@ -90,6 +91,7 @@ class MemoryCorrectRequest(BaseModel):
 
 class MemoryProcedureVersionRequest(BaseModel):
     version: str = Field(min_length=1, max_length=50)
+    tool_name: str | None = Field(default=None, min_length=1, max_length=255)
     steps: list[dict[str, Any]] = Field(min_length=1)
     input_schema: dict[str, Any] = Field(default_factory=dict)
     output_schema: dict[str, Any] = Field(default_factory=dict)
@@ -136,6 +138,32 @@ class MemoryRetrievalRequest(BaseModel):
     query: str | None = Field(default=None, max_length=500)
 
 
+class MemoryCompressRequest(BaseModel):
+    memory_ids: list[str] = Field(min_length=2, max_length=50)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    summary: str | None = Field(default=None, max_length=2000)
+    expires_in_days: int = Field(default=7, ge=1, le=365)
+
+
+class MemoryDistillRequest(BaseModel):
+    memory_ids: list[str] = Field(min_length=1, max_length=50)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    summary: str | None = Field(default=None, max_length=2000)
+    subject_type: str | None = Field(default=None, min_length=1, max_length=100)
+    subject_id: str | None = Field(default=None, min_length=1, max_length=255)
+    predicate: str | None = Field(default=None, min_length=1, max_length=255)
+    object_value: Any | None = None
+    expires_in_days: int = Field(default=7, ge=1, le=365)
+
+
+class MemoryGraphQuery(BaseModel):
+    memory_type: MemoryType | None = None
+    keyword: str | None = Field(default=None, max_length=200)
+    space_id: str | None = Field(default=None, max_length=36)
+    entity_id: str | None = Field(default=None, max_length=36)
+    max_memories: int = Field(default=100, ge=1, le=100)
+
+
 class MemoryListData(BaseModel):
     data: list[MemoryView]
     page: int
@@ -174,6 +202,16 @@ class MemoryRetrievalData(BaseModel):
     data: MemoryRetrievalResult
 
 
+class MemoryOperationData(BaseModel):
+    data: MemoryView
+    source_memory_ids: list[str]
+    operation: Literal["compress", "distill"]
+
+
+class MemoryGraphData(BaseModel):
+    data: MemoryGraph
+
+
 class MemoryProcedureData(BaseModel):
     data: dict[str, Any]
 
@@ -207,7 +245,10 @@ __all__ = [
     "MemoryDeleteData",
     "MemoryDeleteWrapper",
     "MemoryEvidenceRequest",
+    "MemoryGraphData",
+    "MemoryGraphQuery",
     "MemoryListData",
+    "MemoryOperationData",
     "MemoryProcedureData",
     "MemoryProcedureValidationRequest",
     "MemoryProcedureVersionRequest",

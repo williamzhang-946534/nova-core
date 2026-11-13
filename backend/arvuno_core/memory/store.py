@@ -38,6 +38,7 @@ class MemoryStore(Protocol):
         self, memory_id: str, *, version: str | None = None
     ) -> MemoryProcedureVersion | None: ...
     def add_procedure_version(self, version: MemoryProcedureVersion) -> MemoryProcedureVersion: ...
+    def procedure_versions_for_tool(self, tool_name: str) -> list[MemoryProcedureVersion]: ...
     def add_procedure_validation(
         self, validation: MemoryProcedureValidation
     ) -> MemoryProcedureValidation: ...
@@ -111,6 +112,9 @@ class SqlAlchemyMemoryStore:
 
     def add_procedure_version(self, version: MemoryProcedureVersion) -> MemoryProcedureVersion:
         return self._repository.add_procedure_version(version)
+
+    def procedure_versions_for_tool(self, tool_name: str) -> list[MemoryProcedureVersion]:
+        return self._repository.procedure_versions_for_tool(tool_name)
 
     def add_procedure_validation(
         self, validation: MemoryProcedureValidation

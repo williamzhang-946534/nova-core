@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ReasoningEvidenceSource = Literal["observation", "state_estimate", "event", "task", "memory"]
 ReasoningEvidenceClassification = Literal[
@@ -91,6 +91,30 @@ class ReasoningDiagnosis(BaseModel):
     causal_limitations: list[str] = Field(default_factory=list)
 
 
+class ReasoningAICandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    statement: str = Field(min_length=1, max_length=1000)
+    explanation: str = Field(min_length=1, max_length=2000)
+    evidence_ids: list[str] = Field(min_length=1, max_length=5)
+    causal_claim: bool = True
+    limitations: list[str] = Field(default_factory=list, max_length=5)
+    unknowns: list[str] = Field(default_factory=list, max_length=5)
+
+    @field_validator("evidence_ids")
+    @classmethod
+    def validate_evidence_ids(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("evidence_ids must not contain duplicates")
+        return value
+
+
+class ReasoningAICandidateOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidates: list[ReasoningAICandidate] = Field(max_length=5)
+
+
 class ReasoningCoverage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -169,6 +193,8 @@ class ReasoningSourceData(BaseModel):
 
 
 __all__ = [
+    "ReasoningAICandidate",
+    "ReasoningAICandidateOutput",
     "ReasoningBundleView",
     "ReasoningConfidence",
     "ReasoningCoverage",

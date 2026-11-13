@@ -18,8 +18,10 @@ from arvuno_core.events.models import (
 )
 from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.planning.service import PlanningService
 from arvuno_core.proactive.errors import ProactiveSuggestionNotFoundError
 from arvuno_core.proactive.service import ProactiveService
+from arvuno_core.tools.catalog import RegistryToolCatalog
 
 
 @dataclass
@@ -28,6 +30,22 @@ class FixedClock:
 
     def __call__(self) -> datetime:
         return self.now
+
+
+class _EmptyRegistry:
+    def catalog(self) -> list[dict[str, Any]]:
+        return []
+
+    def get(self, name: str) -> None:
+        return None
+
+
+class _EmptyTaskSystem:
+    pass
+
+
+class _EmptyDeviceService:
+    pass
 
 
 @dataclass
@@ -83,6 +101,8 @@ def proactive_environment(
     cooldown_seconds: int = 3600,
     max_per_hour: int = 5,
     max_per_day: int = 20,
+    max_autonomy_level: int = 2,
+    planning_service: bool = False,
 ) -> ProactiveTestEnvironment:
     manager = DatabaseManager(phase_settings(tmp_path))
     manager.initialize_database()
@@ -108,7 +128,17 @@ def proactive_environment(
         max_per_hour=max_per_hour,
         max_per_day=max_per_day,
         default_autonomy_level=2,
-        max_autonomy_level=2,
+        max_autonomy_level=max_autonomy_level,
+        planning_service=(
+            PlanningService(
+                factory,
+                RegistryToolCatalog(_EmptyRegistry(), permissions={}),
+                _EmptyTaskSystem(),
+                _EmptyDeviceService(),
+            )
+            if planning_service
+            else None
+        ),
     )
     return ProactiveTestEnvironment(
         manager,
@@ -642,6 +672,40 @@ def test_accept_suggestion_marks_accepted_and_updates_quality(tmp_path: Path) ->
         assert quality.total == 1
         assert quality.accepted == 1
         assert quality.quality_score == 100.0
+    finally:
+        env.manager.dispose()
+
+
+def test_accept_level_three_suggestion_creates_candidate_goal(tmp_path: Path) -> None:
+    env = proactive_environment(tmp_path, planning_service=True, max_autonomy_level=4)
+    try:
+        suggestion, _ = asyncio.run(
+            env.service.evaluate_candidate(
+                environment_id=None,
+                trigger_type="device_fault",
+                title="Inspect unavailable device",
+                message="Device offline",
+                importance="normal",
+                dedupe_key="l3:accept:sensor-1",
+                candidate_action={
+                    "objective": "Diagnose the unavailable device",
+                    "device_id": "sensor-1",
+                },
+                autonomy_level=3,
+                now=env.clock.now,
+            )
+        )
+        accepted = asyncio.run(env.service.accept_suggestion(suggestion.id))
+        assert accepted.status == "accepted"
+        assert accepted.goal_id is not None
+        planning = env.service._planning_service
+        assert planning is not None
+        goal = asyncio.run(planning.get_goal(accepted.goal_id))
+        assert goal.status == "candidate"
+        assert goal.confirmed_by_user is False
+        assert goal.origin_record_id == accepted.id
+        assert goal.objective == "Diagnose the unavailable device"
+        assert goal.prohibitions == [{"type": "automatic_execution"}]
     finally:
         env.manager.dispose()
 

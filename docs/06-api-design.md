@@ -12,6 +12,10 @@
 8. OpenAPI 文档由 Pydantic Schema 自动生成。
 9. 前端只依赖 API，不直接访问数据库或 Home Assistant。
 
+## 当前 API 状态
+
+本轮软件能力补齐后，新增或扩展以下 API 面：Privacy Erasure 编排接口（`api/privacy.py`）、Reasoning AI 候选接口、多步 Planning 接口、Proactive L3 候选任务接口、Active Perception 受控执行接口、Multimodal Provider 契约接口和 Memory Procedure Validation 关联查询。所有新接口沿用统一认证、JSON 响应和错误结构；机器人写 API 继续保持锁定，仅通过统一安全链路执行。
+
 ## 认证
 
 第一阶段使用本地访问控制：

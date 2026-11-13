@@ -22,6 +22,7 @@ from arvuno_core.persistence.observations import (
 )
 from arvuno_core.persistence.perception import PerceptionRepository
 from arvuno_core.persistence.planning import PlanningRepository
+from arvuno_core.persistence.privacy import PrivacyRepository
 from arvuno_core.persistence.proactive import ProactiveRepository
 from arvuno_core.persistence.provider_logs import ProviderLogRepository
 from arvuno_core.persistence.reasoning import ReasoningRepository
@@ -80,6 +81,7 @@ class SqlAlchemyUnitOfWork:
         self.multimodal: MultimodalRepository | None = None
         self.robots: RobotRepository | None = None
         self.retention_runs: RetentionRunRepository | None = None
+        self.privacy: PrivacyRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -113,6 +115,7 @@ class SqlAlchemyUnitOfWork:
         self.multimodal = MultimodalRepository(self._session)
         self.robots = RobotRepository(self._session)
         self.retention_runs = RetentionRunRepository(self._session)
+        self.privacy = PrivacyRepository(self._session)
         return self
 
     def __exit__(
@@ -172,3 +175,4 @@ class SqlAlchemyUnitOfWork:
             self.multimodal = None
             self.robots = None
             self.retention_runs = None
+        self.privacy = None

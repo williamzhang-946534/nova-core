@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -8,6 +9,8 @@ from typing import Any
 
 from pydantic import AwareDatetime
 
+from arvuno_core.ai.models import ProviderMessage, ProviderMessageRole, ProviderRequest
+from arvuno_core.ai.provider import AIProvider
 from arvuno_core.persistence.models import (
     EstimationTarget,
     Event,
@@ -31,6 +34,7 @@ from arvuno_core.reasoning.errors import (
     ReasoningSourceNotFoundError,
 )
 from arvuno_core.reasoning.models import (
+    ReasoningAICandidateOutput,
     ReasoningBundleView,
     ReasoningCoverage,
     ReasoningDiagnosis,
@@ -57,12 +61,20 @@ class ReasoningService:
         unit_of_work_factory: UnitOfWorkFactory,
         *,
         environment_name: str = "home",
+        ai_provider: AIProvider | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._environment_name = environment_name
+        self._ai_provider = ai_provider
 
     async def diagnose(self, request: Any) -> ReasoningSessionView:
-        return await asyncio.to_thread(self._diagnose, request)
+        ai_configured = self._ai_provider is not None
+        session = await asyncio.to_thread(
+            lambda: self._diagnose(request, ai_configured=ai_configured)
+        )
+        if self._ai_provider is not None:
+            session = await self._add_ai_candidates(session.id)
+        return session
 
     async def list_sessions(self, **filters: object) -> tuple[list[ReasoningSessionView], int]:
         def execute() -> tuple[list[ReasoningSessionView], int]:
@@ -161,7 +173,7 @@ class ReasoningService:
 
         return await asyncio.to_thread(execute)
 
-    def _diagnose(self, request: Any) -> ReasoningSessionView:
+    def _diagnose(self, request: Any, *, ai_configured: bool) -> ReasoningSessionView:
         now = _now(request.now)
         end_time = request.end_time or now
         start_time = request.start_time or end_time - timedelta(
@@ -333,12 +345,180 @@ class ReasoningService:
             session.diagnosis = diagnosis.model_dump(mode="json")
             session.analyzer_versions = {
                 "deterministic_environment_rules": "1.0.0",
-                "ai_candidate_generator": "not_configured",
+                "ai_candidate_generator": "configured" if ai_configured else "not_configured",
             }
             session.status = "completed"
             session.completed_at = now
             unit_of_work.commit()
         return self.get_session_sync(session.id)
+
+    async def _add_ai_candidates(self, session_id: str) -> ReasoningSessionView:
+        assert self._ai_provider is not None
+        evidence_rows, _ = await self.evidence(session_id, page_size=200)
+        request = self._ai_request(session_id, evidence_rows)
+        try:
+            response = await self._ai_provider.generate(request)
+            candidates = ReasoningAICandidateOutput.model_validate(response.output)
+        except Exception as exc:
+            return await self._record_ai_outcome(
+                session_id,
+                status="provider_failed",
+                accepted=0,
+                rejected=0,
+                reason=type(exc).__name__,
+            )
+
+        evidence_by_id = {item.id: item for item in evidence_rows}
+        accepted = 0
+        rejected = 0
+        with self._unit_of_work_factory() as unit_of_work:
+            assert unit_of_work.reasoning is not None
+            repository = unit_of_work.reasoning
+            session = repository.get_session(session_id)
+            if session is None:
+                raise ReasoningSessionNotFoundError()
+            diagnosis = ReasoningDiagnosis.model_validate(session.diagnosis)
+            seen_statements: set[str] = set()
+            for candidate in candidates.candidates:
+                links = [
+                    evidence_by_id[evidence_id]
+                    for evidence_id in candidate.evidence_ids
+                    if evidence_id in evidence_by_id
+                ]
+                if len(links) != len(candidate.evidence_ids):
+                    rejected += 1
+                    continue
+                statement_key = candidate.statement.casefold()
+                if statement_key in seen_statements:
+                    rejected += 1
+                    continue
+                seen_statements.add(statement_key)
+                hypothesis = repository.add_hypothesis(
+                    Hypothesis(
+                        session_id=session.id,
+                        environment_id=session.environment_id,
+                        statement=candidate.statement,
+                        hypothesis_type="ai_candidate",
+                        origin_type="model",
+                        status="plausible",
+                        confidence_level="low",
+                        causal_claim=False,
+                        explanation=candidate.explanation,
+                        limitations=[
+                            *candidate.limitations,
+                            "Model output is an unverified candidate "
+                            "and requires independent review.",
+                        ],
+                        unknowns=candidate.unknowns,
+                        rule_id="reasoning_ai_candidate_v1",
+                        rule_version="1.0.0",
+                    )
+                )
+                for evidence in links:
+                    repository.add_hypothesis_evidence(
+                        HypothesisEvidence(
+                            hypothesis_id=hypothesis.id,
+                            evidence_id=evidence.id,
+                            relationship="supports",
+                            weight=min(evidence.trust_level, 0.6),
+                            rationale="The model cited this evidence as candidate support.",
+                        )
+                    )
+                diagnosis.candidate_causes.append(candidate.statement)
+                diagnosis.causal_limitations.append(
+                    f"The AI candidate remains unverified: {candidate.statement}"
+                )
+                accepted += 1
+            session.diagnosis = diagnosis.model_dump(mode="json")
+            session.analyzer_versions = {
+                **session.analyzer_versions,
+                "ai_candidate_generator": "configured",
+                "ai_candidate_generator_status": "validated",
+            }
+            session.scope = {
+                **session.scope,
+                "ai_candidates": {
+                    "provider": response.provider,
+                    "model": response.model,
+                    "provider_log_id": response.provider_log_id,
+                    "accepted": accepted,
+                    "rejected": rejected,
+                },
+            }
+            unit_of_work.commit()
+        return await self.get_session(session_id)
+
+    async def _record_ai_outcome(
+        self,
+        session_id: str,
+        *,
+        status: str,
+        accepted: int,
+        rejected: int,
+        reason: str,
+    ) -> ReasoningSessionView:
+        def execute() -> None:
+            with self._unit_of_work_factory() as unit_of_work:
+                assert unit_of_work.reasoning is not None
+                session = unit_of_work.reasoning.get_session(session_id)
+                if session is None:
+                    raise ReasoningSessionNotFoundError()
+                session.analyzer_versions = {
+                    **session.analyzer_versions,
+                    "ai_candidate_generator": "configured",
+                    "ai_candidate_generator_status": status,
+                }
+                session.scope = {
+                    **session.scope,
+                    "ai_candidates": {
+                        "accepted": accepted,
+                        "rejected": rejected,
+                        "outcome": reason,
+                    },
+                }
+                unit_of_work.commit()
+
+        await asyncio.to_thread(execute)
+        return await self.get_session(session_id)
+
+    @staticmethod
+    def _ai_request(
+        session_id: str,
+        evidence_rows: list[ReasoningEvidenceView],
+    ) -> ProviderRequest:
+        system = (
+            "You are an environment-diagnosis candidate generator for Arvuno Core. "
+            "Use only supplied evidence IDs and never claim a verified cause. Return "
+            "at most five concise hypotheses that remain plausible until independently "
+            "verified. Return exactly the requested JSON object."
+        )
+        payload = {
+            "session_id": session_id,
+            "evidence": [
+                {
+                    "evidence_id": item.id,
+                    "source_type": item.source_type,
+                    "classification": item.classification,
+                    "statement": item.statement,
+                    "quality_status": item.quality_status,
+                    "trust_level": item.trust_level,
+                }
+                for item in evidence_rows
+            ],
+            "output_contract": ReasoningAICandidateOutput.model_json_schema(),
+        }
+        return ProviderRequest(
+            request_kind="reasoning_ai_candidates",
+            messages=[
+                ProviderMessage(role=ProviderMessageRole.SYSTEM, content=system),
+                ProviderMessage(
+                    role=ProviderMessageRole.USER,
+                    content=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                ),
+            ],
+            response_schema=ReasoningAICandidateOutput.model_json_schema(),
+            correlation_id=session_id,
+        )
 
     def get_session_sync(self, session_id: str) -> ReasoningSessionView:
         with self._unit_of_work_factory() as unit_of_work:

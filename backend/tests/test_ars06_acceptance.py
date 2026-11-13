@@ -117,7 +117,7 @@ def test_acceptance_capability_registration_and_state_sync(tmp_path: Path) -> No
             listed = client.get("/api/robots", headers=HEADERS)
             assert listed.status_code == 200
             robot = listed.json()[0]["data"]
-            assert robot["adapter_id"] == "mock_robot"
+            assert robot["adapter_id"] == "desktop_firmware_simulator"
             assert robot["is_enabled"] is False
             assert robot["emergency_stop"] is True
 

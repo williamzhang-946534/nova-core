@@ -15,6 +15,8 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 
 当前模块清单在第一阶段基础上补充了 Memory、多模态按需处理、Robot Integration、Retention Scheduler 和机器人管理界面。Robot Integration 只承载 Adapter 事实投影、Profile、能力治理、Consent、心跳/失效安全和事件记录；所有 Agent 动作必须进入 Tool System 统一链路，直接物理动作 API 保持锁定。语音和视觉只作为按需多模态能力，持续监控和真实硬件采集不在当前安全审批范围内。
 
+本轮软件能力补齐后，Memory 模块新增压缩、知识提炼和工具执行自动 Procedure Validation；Reasoning、Planning、Proactive 模块分别具备 AI 候选生成、多步计划和 L3 候选任务生成；Robot Integration 新增固件协议契约与 Simulator（仅软件层验证）；隐私治理新增 Privacy Erasure 编排。各模块职责边界不变，详细交付证据见 [39-software-delivery-acceptance-report.md](39-software-delivery-acceptance-report.md)。
+
 ## 模块清单
 
 | 模块 | 核心问题 | 阶段 |

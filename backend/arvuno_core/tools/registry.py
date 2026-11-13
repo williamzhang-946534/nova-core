@@ -17,6 +17,8 @@ from arvuno_core.robots.service import RobotApplicationService
 from arvuno_core.tools.models import (
     ControlDeviceInput,
     ControlDeviceOutput,
+    EventQueryInput,
+    EventQueryOutput,
     GetDeviceStateInput,
     GetDeviceStateOutput,
     HistoryQueryInput,
@@ -101,7 +103,9 @@ def build_default_tool_registry(
     | None = None,
     history_query_provider: Callable[[HistoryQueryInput], Awaitable[HistoryQueryOutput]]
     | None = None,
+    event_query_provider: Callable[[EventQueryInput], Awaitable[EventQueryOutput]] | None = None,
     robot_service: RobotApplicationService | None = None,
+    perception_execution_provider: Callable[[str], Awaitable[Any]] | None = None,
 ) -> ToolRegistry:
     async def list_devices(
         _context: ToolExecutionContext,
@@ -183,6 +187,14 @@ def build_default_tool_registry(
                 operation=raw_input.operation,
             )
         return await history_query_provider(raw_input)
+
+    async def query_events(
+        _context: ToolExecutionContext,
+        raw_input: EventQueryInput,
+    ) -> EventQueryOutput:
+        if event_query_provider is None:
+            return EventQueryOutput(service_available=False)
+        return await event_query_provider(raw_input)
 
     async def control_device(
         _context: ToolExecutionContext,
@@ -280,6 +292,21 @@ def build_default_tool_registry(
     )
     registry.register(
         ToolDefinition(
+            name="query_events",
+            version="1.0.0",
+            description="Read persisted domain events by type, source, subject, or correlation.",
+            category="history_query",
+            risk_level=ToolRiskLevel.READ_ONLY,
+            default_permission=ToolPermission.ALLOW,
+            requires_confirmation=False,
+            enabled=True,
+            input_type=EventQueryInput,
+            output_type=EventQueryOutput,
+            handler=query_events,
+        )
+    )
+    registry.register(
+        ToolDefinition(
             name="get_device_state",
             version="1.0.0",
             description="Read the current normalized state of one device.",
@@ -312,4 +339,8 @@ def build_default_tool_registry(
         from arvuno_core.tools.robot import register_robot_tools
 
         register_robot_tools(registry, robot_service)
+    if perception_execution_provider is not None:
+        from arvuno_core.tools.perception import register_active_perception_tool
+
+        register_active_perception_tool(registry, perception_execution_provider)
     return registry
