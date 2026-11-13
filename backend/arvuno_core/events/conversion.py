@@ -50,6 +50,12 @@ def device_event_to_arvuno_event(
             device_id=device_id,
             reason=str(payload.get("reason") or "The device became unavailable."),
             observed_state=current_state or "unavailable",
+            error_code=payload.get("error_code")
+            if isinstance(payload.get("error_code"), str)
+            else None,
+            failure_scope=payload.get("failure_scope")
+            if isinstance(payload.get("failure_scope"), str)
+            else None,
         )
 
     return ArvunoEvent(

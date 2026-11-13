@@ -108,6 +108,7 @@ class EventRetentionService:
         retention_days: int,
         diagnostic_retention_days: int,
         long_term_event_types: list[str],
+        limit: int | None = None,
     ) -> int:
         def execute() -> int:
             with self._unit_of_work_factory() as unit_of_work:
@@ -118,6 +119,7 @@ class EventRetentionService:
                     retention_days=retention_days,
                     diagnostic_retention_days=diagnostic_retention_days,
                     long_term_event_types=long_term_event_types,
+                    limit=limit,
                 )
                 unit_of_work.commit()
                 return deleted

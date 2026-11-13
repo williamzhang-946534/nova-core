@@ -1,9 +1,18 @@
 import asyncio
 from collections.abc import Callable
+from datetime import datetime
 
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from arvuno_core.robots.interface import RobotAdapter
-from arvuno_core.robots.models import RobotStateSnapshot, utc_now
+from arvuno_core.robots.models import (
+    RobotCapability,
+    RobotCapabilityName,
+    RobotConsent,
+    RobotConsentGrant,
+    RobotPolicySnapshot,
+    RobotStateSnapshot,
+    utc_now,
+)
 
 
 class RobotRegistry:
@@ -55,11 +64,97 @@ class RobotRegistry:
 
         return await asyncio.to_thread(execute)
 
+    async def set_capability_governance(
+        self,
+        robot_id: str,
+        capability: RobotCapabilityName,
+        *,
+        enabled: bool | None = None,
+        approved: bool | None = None,
+        consent_granted: bool | None = None,
+        approved_by: str | None = None,
+    ) -> RobotCapability:
+        def execute():
+            with self._unit_of_work_factory() as unit_of_work:
+                assert unit_of_work.robots is not None
+                result = unit_of_work.robots.set_capability_governance(
+                    robot_id,
+                    capability,
+                    enabled=enabled,
+                    approved=approved,
+                    consent_granted=consent_granted,
+                    approved_by=approved_by,
+                )
+                unit_of_work.commit()
+                return result
+
+        return await asyncio.to_thread(execute)
+
     async def capabilities(self, robot_id: str):
         def execute():
             with self._unit_of_work_factory() as unit_of_work:
                 assert unit_of_work.robots is not None
                 return unit_of_work.robots.capabilities(robot_id)
+
+        return await asyncio.to_thread(execute)
+
+    async def find_policy_snapshot(self, robot_id: str) -> RobotPolicySnapshot | None:
+        def execute():
+            with self._unit_of_work_factory() as unit_of_work:
+                assert unit_of_work.robots is not None
+                return unit_of_work.robots.policy_snapshot(robot_id)
+
+        return await asyncio.to_thread(execute)
+
+    async def grant_consent(
+        self,
+        robot_id: str,
+        grant: RobotConsentGrant,
+    ) -> RobotConsent:
+        def execute():
+            with self._unit_of_work_factory() as unit_of_work:
+                assert unit_of_work.robots is not None
+                result = unit_of_work.robots.create_consent(robot_id, grant)
+                unit_of_work.commit()
+                return result
+
+        return await asyncio.to_thread(execute)
+
+    async def revoke_consent(
+        self,
+        robot_id: str,
+        consent_id: str,
+        *,
+        revoked_by: str,
+    ) -> RobotConsent:
+        def execute():
+            with self._unit_of_work_factory() as unit_of_work:
+                assert unit_of_work.robots is not None
+                result = unit_of_work.robots.revoke_consent(
+                    robot_id,
+                    consent_id,
+                    revoked_by=revoked_by,
+                )
+                unit_of_work.commit()
+                return result
+
+        return await asyncio.to_thread(execute)
+
+    async def list_consents(
+        self,
+        robot_id: str,
+        *,
+        capability: RobotCapabilityName | None = None,
+        active_only: bool = False,
+    ) -> list[RobotConsent]:
+        def execute():
+            with self._unit_of_work_factory() as unit_of_work:
+                assert unit_of_work.robots is not None
+                return unit_of_work.robots.list_consents(
+                    robot_id,
+                    capability=capability,
+                    active_only=active_only,
+                )
 
         return await asyncio.to_thread(execute)
 
@@ -80,6 +175,7 @@ class RobotRegistry:
         external_id: str,
         *,
         reason: str,
+        occurred_at: datetime | None = None,
     ):
         def execute():
             with self._unit_of_work_factory() as unit_of_work:
@@ -88,7 +184,7 @@ class RobotRegistry:
                     adapter_id,
                     external_id,
                     reason=reason,
-                    occurred_at=utc_now(),
+                    occurred_at=occurred_at or utc_now(),
                 )
                 unit_of_work.commit()
                 return robot

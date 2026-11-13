@@ -13,6 +13,7 @@ from arvuno_core.perception.models import ActivePerceptionRequestView
 from arvuno_core.perception.service import ActivePerceptionService
 from arvuno_core.persistence.models import ObservationAttributePolicy
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.robots.errors import RobotExecutionLockedError
 from arvuno_core.robots.models import (
     RobotCapabilityName,
     RobotTaskRequestCreate,
@@ -127,6 +128,13 @@ class RobotMobilePerceptionService:
         )
 
     async def execute(self, request_id: str) -> ActivePerceptionRequestView:
+        del request_id
+        raise RobotExecutionLockedError()
+
+    async def _legacy_execute(self, request_id: str) -> ActivePerceptionRequestView:
+        # WP7 will replace this direct robot-service path with the unified tool chain.
+        # Keep the implementation temporarily to preserve the unfinished ARS-06.4 work,
+        # but no production caller may reach it before that refactor lands.
         request = await self._active_perception_service.get_request(request_id)
         plan = self._mobile_plan(request)
         self._validate_authorization(request, plan)
@@ -220,7 +228,13 @@ class RobotMobilePerceptionService:
                     "mock_only": result.get("mock_only") is True,
                 },
             )
-            return self._observation_input(current, current_plan, media_handle, now)
+            return self._observation_input(
+                current,
+                current_plan,
+                media_handle,
+                now,
+                mock_only=readiness.get("adapter_id") == "mock_robot",
+            )
 
         fulfilled = await self._active_perception_service.execute(
             request_id,
@@ -540,6 +554,8 @@ class RobotMobilePerceptionService:
         plan: dict[str, Any],
         media_handle: str,
         now: datetime,
+        *,
+        mock_only: bool,
     ) -> ObservationInput:
         attribute = request.attribute
         if attribute not in SUPPORTED_ATTRIBUTES or request.space_id is None:
@@ -554,7 +570,7 @@ class RobotMobilePerceptionService:
                 "confidence": 0.0,
                 "media_handle": media_handle,
                 "analysis": "not_performed",
-                "mock_only": True,
+                "mock_only": mock_only,
             }
         elif attribute == "occupancy":
             raw_value = "unknown"

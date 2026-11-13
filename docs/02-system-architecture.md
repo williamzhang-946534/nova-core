@@ -230,6 +230,8 @@ Windows 11
 ├── Arvuno Backend 进程
 │   ├── REST API
 │   ├── WebSocket
+│   ├── Robot Tool Handler
+│   ├── Retention Scheduler
 │   ├── 静态前端资源（可选）
 │   └── SQLite / logs / backups
 └── Home Assistant
@@ -253,6 +255,8 @@ Windows 11
 3. 事件时间线 API 查询历史。
 4. Automation Engine 根据事件评估规则。
 
+Event Bus 先持久化，再并发分发订阅者。每个订阅者有独立超时和异常隔离；Automation Engine 的应用内订阅入口使用后台任务调度，慢动作不会阻塞设备轮询。该机制是进程内实现，不提供跨进程队列协调。
+
 ### 任务执行流
 
 1. Agent 或 Automation 创建 Task。
@@ -260,6 +264,8 @@ Windows 11
 3. Tool Executor 执行每个步骤。
 4. 系统记录工具调用和状态验证。
 5. Task System 更新任务状态和结果。
+
+应用重启后，Task System 会恢复未执行的任务、取消已丢失确认 Token 的等待任务，并把仍处 running 的外部执行标为 `needs_verification`，不会盲目重复执行。
 
 ## 错误处理原则
 
@@ -304,7 +310,7 @@ API 层将这些错误转换为稳定错误码，不暴露堆栈给前端。日�
 | 是否缺少任务记录 | 否，Task 与 ToolExecution 独立持久化 |
 | 是否缺少权限控制 | 否，Safety Policy 和 Tool Permission 提前设计 |
 | 是否缺少结果验证 | 否，State Verifier 属于工具执行链路 |
-| 是否过度设计 | 不引入消息队列、微服务、向量数据库、多 Agent 和机器人模块 |
+| 是否过度设计 | 不引入消息队列、微服务、向量数据库和多 Agent；Robot Integration、Multimodal 与 Retention 保持进程内模块 |
 | 是否适合 Windows | 是，单进程后端 + SQLite + 本地前端 |
 | 是否适合个人开发 | 是，模块少、边界清晰、部署简单 |
 

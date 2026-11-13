@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -15,6 +16,17 @@ class RobotConnectionState(StrEnum):
     CONNECTING = "connecting"
     CONNECTED = "connected"
     DEGRADED = "degraded"
+
+
+class RobotRuntimeState(StrEnum):
+    ONLINE = "online"
+    OFFLINE = "offline"
+    STALE = "stale"
+    BUSY = "busy"
+    IDLE = "idle"
+    ERROR = "error"
+    EMERGENCY_STOPPED = "emergency_stopped"
+    UNKNOWN = "unknown"
 
 
 class RobotMotionSafetyState(StrEnum):
@@ -37,6 +49,10 @@ class RobotCapabilityName(StrEnum):
     RETURN_TO_DOCK = "return_to_dock"
     CHARGE = "charge"
     REPORT_STATUS = "report_status"
+    LOOK_AT = "look_at"
+    OBSERVE_SCENE = "observe_scene"
+    REQUEST_SAFE_STOP = "request_safe_stop"
+    ENTER_IDLE_POSE = "enter_idle_pose"
 
 
 CapabilityVerification = Literal[
@@ -48,6 +64,7 @@ CapabilityVerification = Literal[
 ]
 
 RobotRiskLevel = Literal["read_only", "low_risk", "medium_risk", "high_risk"]
+RobotDataCategory = Literal["camera", "microphone", "speaker", "motion"]
 
 
 class RobotTaskStatus(StrEnum):
@@ -62,6 +79,10 @@ class RobotTaskStatus(StrEnum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    CANCEL_REQUESTED = "cancel_requested"
+    STOPPING = "stopping"
+    CANCEL_FAILED = "cancel_failed"
+    EXECUTION_UNKNOWN = "execution_state_unknown"
     SAFE_STOPPED = "safe_stopped"
     UNAVAILABLE = "unavailable"
 
@@ -73,6 +94,10 @@ ACTIVE_ROBOT_TASK_STATUSES = {
     RobotTaskStatus.ACCEPTED,
     RobotTaskStatus.RUNNING,
     RobotTaskStatus.WAITING_RESULT,
+    RobotTaskStatus.CANCEL_REQUESTED,
+    RobotTaskStatus.STOPPING,
+    RobotTaskStatus.CANCEL_FAILED,
+    RobotTaskStatus.EXECUTION_UNKNOWN,
 }
 
 
@@ -113,6 +138,7 @@ class RobotDefinition(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     vendor: str = Field(default="custom", max_length=100)
     model: str = Field(default="custom_desktop_robot", max_length=100)
+    profile: str | None = Field(default=None, max_length=50)
     hardware_version: str | None = Field(default=None, max_length=100)
     firmware_version: str | None = Field(default=None, max_length=100)
     edge_runtime_version: str | None = Field(default=None, max_length=100)
@@ -144,6 +170,12 @@ class RobotCapability(BaseModel):
     capability: RobotCapabilityName
     schema_version: str = "1.0"
     verification_status: CapabilityVerification = "concept"
+    discovered: bool = True
+    supported: bool = False
+    enabled: bool = False
+    approved: bool = False
+    consent_granted: bool = False
+    executable: bool = False
     runtime_enabled: bool = False
     risk_level: RobotRiskLevel = "medium_risk"
     requires_confirmation: bool = True
@@ -191,6 +223,10 @@ class RobotEvent(BaseModel):
         "task_succeeded",
         "task_failed",
         "task_cancelled",
+        "task_cancel_requested",
+        "task_stopping",
+        "task_cancel_failed",
+        "task_execution_unknown",
         "task_safe_stopped",
         "task_unavailable",
     ]
@@ -229,6 +265,8 @@ class RegisteredRobotTaskRequest(BaseModel):
     requested_by: str
     origin_type: str
     task_id: str | None = None
+    task_step_id: str | None = None
+    tool_execution_id: str | None = None
     idempotency_key: str | None = None
     confirmed_by_user: bool = False
     requires_confirmation: bool = True
@@ -242,6 +280,43 @@ class RegisteredRobotTaskRequest(BaseModel):
     updated_at: datetime
 
 
+class RobotRuntimeStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1)
+    state: RobotRuntimeState
+    connection_state: RobotConnectionState
+    motion_safety_state: RobotMotionSafetyState
+    is_fresh: bool
+    last_seen_at: datetime | None = None
+    last_evaluated_at: datetime
+    heartbeat_timeout_seconds: float = Field(gt=0)
+    active_task_count: int = Field(ge=0)
+    error_code: str | None = Field(default=None, max_length=100)
+
+
+class RobotHeartbeatReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_at: datetime
+    motion_safety_state: RobotMotionSafetyState | None = None
+    emergency_stop: bool | None = None
+    manual_takeover: bool | None = None
+    battery_percent: float | None = Field(default=None, ge=0, le=100)
+    device_states: RobotDeviceStates | None = None
+    location: RobotLocation | None = None
+    source: Literal["firmware_reported", "edge_observed", "mock"] = "firmware_reported"
+
+
+class RobotHeartbeatResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    reason: str = Field(min_length=1, max_length=100)
+    robot: RegisteredRobot
+    runtime_state: RobotRuntimeStatus
+
+
 class RobotExecutionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -253,11 +328,52 @@ class RobotExecutionResult(BaseModel):
     events: list[RobotEvent] = Field(default_factory=list)
 
 
+class RobotConsent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    robot_id: str = Field(min_length=1)
+    capability: RobotCapabilityName
+    data_category: RobotDataCategory
+    space_id: str | None = None
+    status: Literal["granted", "revoked", "expired"] = "granted"
+    granted_at: datetime
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None
+    grant_source: str
+    granted_by: str
+
+
+class RobotConsentGrant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability: RobotCapabilityName
+    data_category: RobotDataCategory
+    space_id: str | None = Field(default=None, max_length=36)
+    expires_at: datetime | None = None
+    grant_source: str = Field(default="user", max_length=50)
+    granted_by: str = Field(min_length=1, max_length=255)
+
+
+class RobotConsentRevoke(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    consent_id: str = Field(min_length=1, max_length=36)
+    revoked_by: str = Field(min_length=1, max_length=255)
+
+
 class RobotRegistration(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     adapter_id: str = Field(min_length=1, max_length=100)
     external_id: str = Field(min_length=1, max_length=255)
+
+
+@dataclass(frozen=True)
+class RobotPolicySnapshot:
+    robot: RegisteredRobot
+    capabilities: tuple[RobotCapability, ...]
+    consents: tuple[RobotConsent, ...]
 
 
 def robot_task_is_final(status: RobotTaskStatus) -> bool:

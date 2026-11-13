@@ -22,6 +22,7 @@ from arvuno_core.persistence.models import (
     RobotTaskRequestRecord,
 )
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from arvuno_core.robots.errors import RobotExecutionLockedError
 from arvuno_core.robots.models import (
     RobotCapabilityName,
 )
@@ -52,6 +53,7 @@ def settings(tmp_path: Path) -> Settings:
         _env_file=None,
         environment="test",
         api_token="test-api-token",
+        robot_profile="legacy_mock_mobile",
         data_dir=tmp_path / "data",
         log_dir=tmp_path / "logs",
         backup_dir=tmp_path / "backups",
@@ -94,6 +96,17 @@ def prepare_robot(adapter: Any, robot_service: Any) -> str:
     asyncio.run(robot_service.sync_robot(adapter, adapter.external_id))
     robots = asyncio.run(robot_service.list_robots())
     asyncio.run(robot_service.enable_robot(robots[0].id, enabled=True))
+    for capability in (RobotCapabilityName.NAVIGATE_TO, RobotCapabilityName.OBSERVE):
+        asyncio.run(
+            robot_service.set_capability_governance(
+                robots[0].id,
+                capability,
+                enabled=True,
+                approved=True,
+                consent_granted=True,
+                approved_by="test-admin",
+            )
+        )
     return asyncio.run(robot_service.list_robots(enabled_only=True))[0].id
 
 
@@ -166,9 +179,7 @@ def execute(environment: MobileEnvironment, request_id: str) -> Any:
 
 def task_count(environment: MobileEnvironment) -> int:
     with environment.manager.session_factory() as session:
-        return int(
-            session.scalar(select(func.count()).select_from(RobotTaskRequestRecord)) or 0
-        )
+        return int(session.scalar(select(func.count()).select_from(RobotTaskRequestRecord)) or 0)
 
 
 def observation_count(environment: MobileEnvironment) -> int:
@@ -221,34 +232,16 @@ def test_mobile_perception_fulfills_exact_space_request_with_sources_and_trace(
         assert authorized.authorization_scope["target_space_id"] == room_id
         assert authorized.authorization_scope["confirmed_camera_capture"] is True
 
-        fulfilled = execute(environment, request.id)
-        assert fulfilled.status == "fulfilled"
-        assert fulfilled.fulfilled_by_type == "observation"
-        assert fulfilled.follow_up_reasoning_session_id != request.reasoning_session_id
-        assert task_count(environment) == 2
-        assert observation_count(environment) == 1
-        assert fulfilled.execution_trace["navigation_task_status"] == "succeeded"
-        assert fulfilled.execution_trace["observation_task_status"] == "succeeded"
-        assert fulfilled.execution_trace["media_handle"].startswith("mock-image-")
-
-        with environment.manager.session_factory() as session:
-            observation = session.get(Observation, fulfilled.fulfilled_by_id)
-            assert observation is not None
-            assert observation.source_type == "robot_mobile"
-            assert observation.space_id == room_id
-            assert observation.normalized_value == {
-                "scene_labels": [],
-                "objects": [],
-                "confidence": 0.0,
-                "media_handle": fulfilled.execution_trace["media_handle"],
-                "analysis": "not_performed",
-                "mock_only": True,
-            }
+        with pytest.raises(RobotExecutionLockedError):
+            execute(environment, request.id)
+        assert refresh(environment, request.id).status == "proposed"
+        assert task_count(environment) == 0
+        assert observation_count(environment) == 0
     finally:
         environment.manager.dispose()
 
 
-def test_navigation_failure_marks_request_unavailable_without_observation(
+def test_navigation_failure_cannot_be_reached_while_execution_is_locked(
     tmp_path: Path,
 ) -> None:
     environment = mobile_environment(tmp_path)
@@ -258,14 +251,13 @@ def test_navigation_failure_marks_request_unavailable_without_observation(
         request = evaluate(environment, space_id=room_id)
         authorize(environment, request.id)
 
-        with pytest.raises(RobotMobilePerceptionError, match="navigation task"):
+        with pytest.raises(RobotExecutionLockedError):
             execute(environment, request.id)
 
         unavailable = refresh(environment, request.id)
         assert unavailable is not None
-        assert unavailable.status == "unavailable"
-        assert unavailable.execution_trace["navigation_task_status"] == "failed"
-        assert task_count(environment) == 1
+        assert unavailable.status == "proposed"
+        assert task_count(environment) == 0
         assert observation_count(environment) == 0
     finally:
         environment.manager.dispose()
@@ -346,12 +338,12 @@ def test_room_allowlist_blocks_motion_into_unauthorized_space(tmp_path: Path) ->
         environment.manager.dispose()
 
 
-def test_missing_or_tampered_authorization_blocks_execution(tmp_path: Path) -> None:
+def test_execution_lock_precedes_mobile_authorization_validation(tmp_path: Path) -> None:
     environment = mobile_environment(tmp_path)
     try:
         room_id = create_room(environment, "authorization")
         request = evaluate(environment, space_id=room_id)
-        with pytest.raises(RobotMobilePerceptionError, match="status 'awaiting_consent'"):
+        with pytest.raises(RobotExecutionLockedError):
             execute(environment, request.id)
         assert task_count(environment) == 0
 
@@ -365,7 +357,7 @@ def test_missing_or_tampered_authorization_blocks_execution(tmp_path: Path) -> N
             }
             session.commit()
 
-        with pytest.raises(RobotMobilePerceptionError, match="scope"):
+        with pytest.raises(RobotExecutionLockedError):
             execute(environment, request.id)
         assert task_count(environment) == 0
     finally:
@@ -387,14 +379,17 @@ def test_entity_scope_is_rejected_even_when_a_robot_is_ready(tmp_path: Path) -> 
         environment.manager.dispose()
 
 
-def test_mobile_perception_api_requires_token_and_completes_flow(tmp_path: Path) -> None:
+def test_mobile_perception_api_requires_token_and_blocks_execution(tmp_path: Path) -> None:
     environment = mobile_environment(tmp_path)
     try:
         room_id = create_room(environment, "api")
-        assert environment.client.post(
-            "/api/robot-perception/requests/evaluate",
-            json={"request": {}, "robot_id": environment.robot_id},
-        ).status_code == 401
+        assert (
+            environment.client.post(
+                "/api/robot-perception/requests/evaluate",
+                json={"request": {}, "robot_id": environment.robot_id},
+            ).status_code
+            == 401
+        )
 
         response = environment.client.post(
             "/api/robot-perception/requests/evaluate",
@@ -428,14 +423,15 @@ def test_mobile_perception_api_requires_token_and_completes_flow(tmp_path: Path)
             f"/api/robot-perception/requests/{request_id}/execute",
             headers=HEADERS,
         )
-        assert executed.status_code == 200
-        assert executed.json()["data"]["status"] == "fulfilled"
+        assert executed.status_code == 403
+        assert executed.json()["error"]["code"] == "ROBOT_EXECUTION_LOCKED"
 
         fetched = environment.client.get(
             f"/api/robot-perception/requests/{request_id}",
             headers=HEADERS,
         )
         assert fetched.status_code == 200
+        assert fetched.json()["data"]["status"] == "proposed"
         assert fetched.json()["data"]["execution_trace"]["mock_only"] is True
     finally:
         environment.manager.dispose()
@@ -443,10 +439,7 @@ def test_mobile_perception_api_requires_token_and_completes_flow(tmp_path: Path)
 
 def test_mobile_perception_uses_only_the_robot_application_boundary() -> None:
     source = (
-        Path(__file__).parents[1]
-        / "arvuno_core"
-        / "perception"
-        / "robot_mobile.py"
+        Path(__file__).parents[1] / "arvuno_core" / "perception" / "robot_mobile.py"
     ).read_text(encoding="utf-8")
     assert "RobotAdapter" not in source
     assert "adapter.execute_task" not in source

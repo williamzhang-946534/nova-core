@@ -450,7 +450,7 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 
 本节与上方仓库历史 `Phase 0-10` 编号相互独立。长期路线使用 `ARS` 编号；历史验收报告不改名。
 
-当前推进边界：长期路线暂时先推进到第七部分 `ARS-06 Embodied Intelligence / 机器人接入`；第八部分 `ARS-07 Industrial Intelligence / 工业环境扩展` 暂停，不进入当前计划。这不关闭 `ARS-02` 至 `ARS-04` 已记录的验收缺口，机器人接入前仍必须完成独立架构和安全确认。
+当前推进边界：长期路线暂时先推进到第七部分 `ARS-06 Embodied Intelligence / 机器人接入`；第八部分 `ARS-07 Industrial Intelligence / 工业环境扩展` 暂停，不进入当前计划。这不关闭 `ARS-02` 至 `ARS-04` 已记录的验收缺口，也不解除 `ARS-05` 的遗留缺口。ARS-06 已完成 Mock 链路和 `ARS-06.4` 最终验收，但真实机器人、真实硬件安全确认和载体 / 能力清单冲突仍未完成，ARS-06 不关闭。
 
 | 长期阶段 | 状态 | 说明 |
 | --- | --- | --- |
@@ -459,7 +459,7 @@ Phase 9 已完成少量 Arvuno 上下文自动化、Web Console 通知和任务�
 | `ARS-03` World Memory | ARS-03 验收部分通过 / 未完全关闭 | Memory 分类、Service、检索、生命周期、用户偏好、时间理解、只读历史查询和 Agent 只读工具入口已实现并通过回归；语义检索、自动压缩、记忆图谱、多用户隔离和真实程序执行验收链路未实现。结果见第 28 号报告 |
 | `ARS-04` World Reasoning & Orchestration | ARS-04 验收部分通过 / 未完全关闭 | 设计与工程实现见第 29 号文档；验收结果见第 30 号报告。确定性 Reasoning、单设备 Goal / Planning、失败重规划、Proactive 基础治理和 Active Perception Mock 闭环已通过回归；AI / 模型 Planner 与评估器、多步与非设备计划、Level 3 / 4、Task System 感知集成、真实 Observer / 授权界面 / Provider 验收仍未实现 |
 | `ARS-05` Multimodal Perception | ARS-05.4 Mock / 按需架构条件通过 / 不关闭 | 设计见第 31 号文档；验收见第 32 号报告。按需图像 / OCR / 音频、Provider 抽象、Mock 视觉 / STT / TTS、Observation 映射、Fusion、隐私治理、物理删除、超时和语音 API / 前端状态机已通过隔离回归。真实摄像头 / 麦克风与真实模型、生产云端 Provider、真实浏览器语音端到端、独立后台唤醒词、持续分析和自动后台保留清理调度器未完成 |
-| `ARS-06` Embodied Intelligence | ARS-06.1 Mock Robot Adapter 实现完成 / 待用户验收；真实硬件接入仍受安全门槛限制 | 当前载体选定为自制桌面机器人，设计见第 34 号文档；第 33 号文档保留为商用机器人 / 通用 Adapter 参考。Robot 接口、Registry、Capability Schema、状态模型、任务请求状态机、事件、MockRobotAdapter、REST API 和持久化已实现；Web Console 最小状态页与 Agent 只读工具未实现。第一版不做轮式导航、机械臂、抓取或持续采集；全部能力默认 concept / disabled / 需确认，急停默认激活，机器人默认禁用；BOM、固件契约和安全实测未冻结，真实硬件不开放 |
+| `ARS-06` Embodied Intelligence | ARS-06.4 Mock 最终验收条件通过 / 不关闭；REPAIR-01 Mock 修复完成，待最终验收和用户复核；真实硬件未验收 | 当前权威载体为第 34 号自制桌面机器人设计；第 33 号文档保留为商用机器人 / 通用 Adapter 参考；第 35 号文档保留其当时的验收结论和历史缺口。Robot 接口、Registry、Capability Schema、状态 / 位置模型、任务请求状态机、事件、MockRobotAdapter、REST API 和持久化已实现。REPAIR-01 已补齐桌面 Profile、统一执行链治理、Consent、服务端一次性确认、心跳 / freshness、失效安全状态、Web Console 管理页、Agent 只读工具和直接执行临时锁定。上述修复仍是 Mock / 架构验收，真实硬件、BOM、固件契约和安全实测未验收，ARS-06 不关闭 |
 | `ARS-07` Industrial Intelligence | 暂停 / 不进入当前计划 | 工业环境扩展保留为未来方向；不提前实现工业 Adapter、协议接入或工业规则 |
 | `ARS-08` Distributed World Intelligence | 远期规划 / 暂缓 | 不进入当前计划，只保留长期方向 |
 
@@ -510,3 +510,11 @@ ARS-02.0 覆盖 Spatial Model、Entity Model、Observation Model、Observation P
 2026-11-06，机器人载体选定为**自制桌面机器人**，ARS-06.0 补充设计完成并输出 `docs/34-ars06-custom-desktop-robot-design.md`，当前状态为等待用户安全确认。该设计将第一版范围收缩为固定桌面载体、受限 pan / tilt 姿态、按需图像、单次语音输入、TTS 播报和状态上报；不实现轮式导航、机械臂、抓取、持续视频监控、常驻麦克风采集或 Level 4 自主执行。自制硬件没有厂商安全兜底，后续必须先冻结 BOM、机械 / 电气设计、固件接口契约、硬件停止、限位、看门狗和失效安全测试，再逐步开放能力；所有能力默认 disabled。
 
 2026-11-09，`ARS-06.1 Robot Adapter 与 Mock Robot` 工程实现完成，待用户验收。该子阶段新增 robots、capabilities、状态快照、事件和任务请求表及 Alembic 迁移 `a6b2c3d4e5f6`；实现 RobotAdapter 接口、Robot Registry、Capability Model、状态 / 位置模型、任务请求状态机、事件、MockRobotAdapter、连接与断线处理和带认证的 REST API。Mock 支持移动成功、导航失败、定位丢失、低电量、任务取消、设备离线、人工接管、急停和超时；全部能力默认 concept / disabled / 需确认，急停默认激活，机器人默认禁用。事件保存前统一将外部 robot ID 归一化为内部 ID；架构边界测试确认 Agent Runtime / Planner 不导入 robots 模块。后端聚焦回归 29 项通过。Web Console 最小状态页和 Agent 只读机器人工具尚未实现；本阶段不包含真实机器人控制代码。
+
+2026-11-09，`ARS-06.3 移动主动感知` Mock 链路工程实现完成，待用户验收。该子阶段新增 `RobotMobilePerceptionService`、`/api/robot-perception` 路由、`robot_mobile` Observation Source、属性策略、导航 + 观察计划、双确认授权作用域、空间 allowlist、Observe 媒体句柄到 Observation 的映射、State Estimation 重建和 Reasoning 重跑。主动观察必须经过 `evaluate → authorize → execute`，缺少导航或摄像头确认、作用域不匹配、机器人离线 / 急停 / 人工接管 / 定位丢失 / 低电 / 未验证能力都会阻止创建机器人任务。该子阶段只验证 Mock 链路，没有真实媒体、视觉分析、真实导航或真实硬件；Alembic 增量迁移 `b8c3d4e5f6a7` 为 Active Perception 增加 `execution_trace`。
+
+2026-11-10，`ARS-06.4 ARS-06 最终验收` 完成并输出 `docs/35-ars06-acceptance-report.md`。验收覆盖独立 Robot Adapter、Capability 注册、定位和状态同步、导航任务、主动观察、感知数据来源、用户授权、急停、人工接管、离线恢复和机器人离线时 Core 独立运行。ARS-06 专项 47 项通过，后端全量回归 399 项通过，Ruff、隔离空库升级到 `b8c3d4e5f6a7`、前端 typecheck / build / format 均通过。修复四个缺陷：任务 `timeout_seconds` 未强制、幂等键语义冲突被静默忽略、移动观察 `mock_only` 硬编码、离线恢复缺少 `connection_changed` 事件。最终结论为**Mock 条件通过 / 不关闭**：真实机器人 ARS-06.2 未执行；Web Console 机器人页、Agent 只读工具、能力级 consent 强制与撤销、一次性确认令牌、自动心跳 / 重连、状态 freshness 和真实视觉分析未实现；第 34 号桌面机器人设计与当前 Mock `navigate_to` / 移动观察能力清单存在冲突，关闭前必须由用户确认唯一权威载体。
+
+2026-11-10，`全项目审查` 完成并输出 `docs/36-full-project-review-2026-11-10.md`。审查覆盖全部后端模块、前端页面、迁移、配置、备份、安全边界、文档承诺和测试基线：后端全量回归 399 项通过（1 个既有 TestClient warning），前端 typecheck / format / build 通过，隔离空库升级到 `b8c3d4e5f6a7`，隔离进程启动和认证冒烟通过；`ruff check .` 通过，但 `ruff format --check .` 因 `tests/test_robot_mobile_perception.py` 格式漂移失败。结论维持：Phase 0–10 历史验收有效，ARS-02 至 ARS-06 均未关闭。新增高优先级审查项包括：机器人执行绕过 Tool Registry / Safety Policy / Tool Executor；机器人 consent、一次性确认和风险上限未强制；Event / Observation / Multimodal / Proactive / Provider Log / Snapshot 保留清理没有运行时调度；Adapter 连续异常会重复发布 `device_unavailable`；Provider Log 保存完整对话输入，与“对话不持久化”文档冲突；`/health` 使用全局 Settings 导致测试不隔离；等待确认任务没有自动过期 / 恢复；EventBus 同步执行自动化任务可能阻塞轮询；API 层仍有直接持久化；项目级 format、CI、前端测试和覆盖率缺失；多模态媒体未纳入 SQLite 备份。上述问题不改变 Phase 0–10 历史结论，但在真实硬件 / 生产使用前必须处理。
+
+2026-11-13，`REPAIR-01` 按第 36 号审查报告执行 WP0–WP9 修复。工程范围包含：机器人不安全写入口临时锁定；Provider Log 隐私最小化和旧数据迁移；六类数据的进程内 Retention Scheduler、`retention_runs` 审计和认证管理 API；设备可用性状态机；Health Settings 与测试隔离；Ruff 格式修复、GitHub Actions、本地检查脚本、前端基础测试和依赖锁；EventBus 超时 / 隔离与任务恢复；`desktop_robot` / `mobile_robot` Profile；Robot Tool Handler、Safety Policy、Consent、一次性确认 Token 和执行审计；机器人 heartbeat、freshness、失效安全与取消未知状态；Web Console 机器人管理页和 Agent 只读查询工具。该记录表示工程修复已实施并通过此前专项回归，最终全量回归、隔离迁移、备份 / 媒体恢复核对、`docs/37` 验收报告和用户复核仍在当前批次执行；ARS-02 至 ARS-06 不因本次修复关闭，真实机器人未验证。

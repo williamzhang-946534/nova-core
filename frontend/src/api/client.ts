@@ -48,6 +48,22 @@ export interface RequestJsonOptions {
   body?: unknown;
 }
 
+export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+
+export async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function requestJson<T>(
   path: string,
   validate: (value: unknown) => value is T,
@@ -67,12 +83,15 @@ export async function requestJson<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}${path}`, {
+    response = await fetchWithTimeout(`${baseUrl}${path}`, {
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError("Arvuno 后端服务请求超时。", { status: 0 });
+    }
     throw new ApiError("无法连接 Arvuno 后端服务。", { status: 0 });
   }
 

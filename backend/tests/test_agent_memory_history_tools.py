@@ -700,14 +700,24 @@ def test_app_tools_use_memory_and_history_services_without_repositories(
     assert confirmed_memory.status_code == 200
     assert confirmed_memory.json()["data"]["status"] == "active"
     assert preference.status_code == 201
-    assert [item["name"] for item in catalog.json()["data"]] == [
+    assert {item["name"] for item in catalog.json()["data"]} == {
+        "robot_status",
+        "robot_capabilities",
+        "robot_task_history",
+        "robot_consents",
         "list_devices",
         "get_environment_state",
         "retrieve_memory",
         "query_history",
         "get_device_state",
         "control_device",
-    ]
+        "robot_observe_scene",
+        "robot_look_at",
+        "robot_speak",
+        "robot_listen",
+        "robot_safe_stop",
+        "robot_idle",
+    }
 
     retrieval_data = retrieval.json()["data"]
     assert retrieval.status_code == 200

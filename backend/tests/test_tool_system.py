@@ -33,6 +33,7 @@ from arvuno_core.tools.models import (
 from arvuno_core.tools.registry import ToolDefinition, ToolRegistry
 from arvuno_core.tools.safety import SafetyPolicy
 from arvuno_core.tools.storage import (
+    StoredToolExecution,
     ToolDefinitionRecord,
     ToolExecutionCreate,
     ToolExecutionUpdate,
@@ -62,7 +63,7 @@ class EchoOutput(BaseModel):
 @dataclass
 class MemoryToolStore:
     definitions: dict[str, ToolDefinitionRecord] = field(default_factory=dict)
-    executions: dict[str, ToolExecutionCreate | ToolExecutionUpdate] = field(default_factory=dict)
+    executions: dict[str, ToolExecutionCreate | StoredToolExecution] = field(default_factory=dict)
     fail_create: bool = False
     fail_update: bool = False
 
@@ -77,7 +78,35 @@ class MemoryToolStore:
     def update_execution(self, execution_id: str, record: ToolExecutionUpdate) -> None:
         if self.fail_update:
             raise RuntimeError("update persistence failed")
-        self.executions[execution_id] = record
+        previous = self.executions[execution_id]
+        if isinstance(previous, ToolExecutionCreate):
+            self.executions[execution_id] = StoredToolExecution(
+                id=execution_id,
+                tool_name=previous.tool_name,
+                status=record.status,
+                input=previous.input,
+                output=record.output,
+                validation=record.validation,
+                risk_level=record.risk_level,
+                permission_result=record.permission_result,
+                error=record.error,
+                correlation_id=previous.correlation_id,
+                started_at=previous.started_at,
+                completed_at=record.completed_at,
+                duration_ms=record.duration_ms,
+            )
+        else:
+            self.executions[execution_id] = replace(
+                previous,
+                status=record.status,
+                output=record.output,
+                validation=record.validation,
+                risk_level=record.risk_level,
+                permission_result=record.permission_result,
+                error=record.error,
+                completed_at=record.completed_at,
+                duration_ms=record.duration_ms,
+            )
 
     def get_execution(self, execution_id: str) -> Any:
         return self.executions.get(execution_id)
@@ -172,8 +201,11 @@ def control_definition() -> ToolDefinition[Any, Any]:
     )
 
 
-def execution_context() -> ToolExecutionContext:
-    return ToolExecutionContext(correlation_id="correlation-1")
+def execution_context(tool_execution_id: str | None = None) -> ToolExecutionContext:
+    return ToolExecutionContext(
+        correlation_id="correlation-1",
+        tool_execution_id=tool_execution_id,
+    )
 
 
 def make_executor(
@@ -360,7 +392,7 @@ def test_executor_success_persists_validation_risk_and_event() -> None:
     )
 
     record = store.get_execution(result.execution_id)
-    assert isinstance(record, ToolExecutionUpdate)
+    assert isinstance(record, StoredToolExecution)
     assert record.status == "completed"
     assert record.output == {"value": "hello"}
     assert record.validation == {"schema_valid": True, "verified": True}
@@ -388,7 +420,7 @@ def test_executor_records_invalid_input_and_rejects_unknown_tool() -> None:
 
     assert len(store.executions) == 1
     record = next(iter(store.executions.values()))
-    assert isinstance(record, ToolExecutionUpdate)
+    assert isinstance(record, StoredToolExecution)
     assert record.status == "rejected"
     assert record.permission_result == PermissionResult.DENIED.value
     assert record.error is not None
@@ -410,11 +442,12 @@ def test_medium_risk_requires_confirmation_and_rejects_expired_or_replayed_token
     with pytest.raises(ToolConfirmationRequiredError) as required:
         asyncio.run(test_executor.execute("test_tool", raw_input, context=execution_context()))
     token = required.value.details["confirmation_token"]
+    execution_id = required.value.details["execution_id"]
     confirmed = asyncio.run(
         test_executor.execute(
             "test_tool",
             raw_input,
-            context=execution_context(),
+            context=execution_context(execution_id),
             confirmation_token=token,
         )
     )
@@ -425,7 +458,7 @@ def test_medium_risk_requires_confirmation_and_rejects_expired_or_replayed_token
             test_executor.execute(
                 "test_tool",
                 raw_input,
-                context=execution_context(),
+                context=execution_context(execution_id),
                 confirmation_token=token,
             )
         )
@@ -433,13 +466,14 @@ def test_medium_risk_requires_confirmation_and_rejects_expired_or_replayed_token
     with pytest.raises(ToolConfirmationRequiredError) as expired_required:
         asyncio.run(test_executor.execute("test_tool", raw_input, context=execution_context()))
     expired_token = expired_required.value.details["confirmation_token"]
+    expired_execution_id = expired_required.value.details["execution_id"]
     clock.now += timedelta(seconds=61)
     with pytest.raises(Exception, match="invalid, expired"):
         asyncio.run(
             test_executor.execute(
                 "test_tool",
                 raw_input,
-                context=execution_context(),
+                context=execution_context(expired_execution_id),
                 confirmation_token=expired_token,
             )
         )
@@ -460,7 +494,7 @@ def test_executor_rejects_high_risk_and_persists_rejection() -> None:
 
     assert error.value.details["risk_level"] == ToolRiskLevel.HIGH.value
     record = next(iter(store.executions.values()))
-    assert isinstance(record, ToolExecutionUpdate)
+    assert isinstance(record, StoredToolExecution)
     assert record.status == "rejected"
     assert record.permission_result == PermissionResult.RISK_EXCEEDED.value
 
@@ -538,7 +572,7 @@ def test_unverified_control_output_is_persisted_as_failed() -> None:
         )
 
     record = next(iter(store.executions.values()))
-    assert isinstance(record, ToolExecutionUpdate)
+    assert isinstance(record, StoredToolExecution)
     assert record.status == "failed"
     assert record.validation == {"schema_valid": True, "verified": False}
     assert record.output is not None

@@ -60,6 +60,14 @@ class Device(Base):
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON)
     metadata_summary: Mapped[dict[str, Any]] = mapped_column("metadata", JSON)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    availability_state: Mapped[str] = mapped_column(
+        String(20), default="online", server_default="online"
+    )
+    availability_failure_scope: Mapped[str | None] = mapped_column(String(20))
+    availability_error_code: Mapped[str | None] = mapped_column(String(100))
+    availability_last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    availability_last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    availability_transitioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
@@ -67,6 +75,14 @@ class Device(Base):
 
     __table_args__ = (
         UniqueConstraint("adapter_id", "external_id", name="uq_devices_adapter_external"),
+        CheckConstraint(
+            "availability_state IN ('online', 'unavailable')",
+            name="ck_devices_availability_state",
+        ),
+        CheckConstraint(
+            "availability_failure_scope IN ('none', 'adapter', 'device', 'entity')",
+            name="ck_devices_availability_failure_scope",
+        ),
         Index("ix_devices_adapter_external", "adapter_id", "external_id"),
         Index("ix_devices_device_type", "device_type"),
         Index("ix_devices_area", "area"),
@@ -838,6 +854,29 @@ class ProviderLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     __table_args__ = (Index("ix_provider_logs_created", "created_at"),)
+
+
+class RetentionRun(Base):
+    __tablename__ = "retention_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    job_name: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    affected_count: Mapped[int] = mapped_column(default=0)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'succeeded', 'failed')",
+            name="ck_retention_runs_status",
+        ),
+        Index("ix_retention_runs_job_started", "job_name", "started_at"),
+    )
 
 
 class UserPreference(Base):
@@ -2245,6 +2284,7 @@ class Robot(Base):
     name: Mapped[str] = mapped_column(String(255))
     vendor: Mapped[str] = mapped_column(String(100))
     model: Mapped[str] = mapped_column(String(100))
+    profile: Mapped[str] = mapped_column(String(50), default="desktop_robot")
     hardware_version: Mapped[str | None] = mapped_column(String(100))
     firmware_version: Mapped[str | None] = mapped_column(String(100))
     edge_runtime_version: Mapped[str | None] = mapped_column(String(100))
@@ -2285,6 +2325,16 @@ class Robot(Base):
     )
 
     capabilities: Mapped[list["RobotCapabilityRecord"]] = relationship(
+        back_populates="robot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    capability_governance: Mapped[list["RobotCapabilityGovernanceRecord"]] = relationship(
+        back_populates="robot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    consents: Mapped[list["RobotConsentRecord"]] = relationship(
         back_populates="robot",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -2337,6 +2387,77 @@ class RobotCapabilityRecord(Base):
     robot: Mapped[Robot] = relationship(back_populates="capabilities")
 
 
+class RobotCapabilityGovernanceRecord(Base):
+    __tablename__ = "robot_capability_governance"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    robot_id: Mapped[str] = mapped_column(ForeignKey("robots.id", ondelete="CASCADE"))
+    capability: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    consent_granted: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[str | None] = mapped_column(String(255))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "robot_id",
+            "capability",
+            name="uq_robot_capability_governance",
+        ),
+        Index(
+            "ix_robot_capability_governance_robot",
+            "robot_id",
+            "capability",
+        ),
+    )
+
+    robot: Mapped[Robot] = relationship(back_populates="capability_governance")
+
+
+class RobotConsentRecord(Base):
+    __tablename__ = "robot_consents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    robot_id: Mapped[str] = mapped_column(ForeignKey("robots.id", ondelete="CASCADE"))
+    capability: Mapped[str] = mapped_column(String(100))
+    data_category: Mapped[str] = mapped_column(String(50))
+    space_id: Mapped[str | None] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(20), default="granted")
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    grant_source: Mapped[str] = mapped_column(String(50))
+    granted_by: Mapped[str] = mapped_column(String(255))
+    metadata_summary: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('granted', 'revoked', 'expired')",
+            name="ck_robot_consents_status",
+        ),
+        CheckConstraint(
+            "data_category IN ('camera', 'microphone', 'speaker', 'motion')",
+            name="ck_robot_consents_data_category",
+        ),
+        Index("ix_robot_consents_active", "robot_id", "capability", "data_category", "status"),
+        Index("ix_robot_consents_robot_space", "robot_id", "space_id"),
+    )
+
+    robot: Mapped[Robot] = relationship(back_populates="consents")
+
+
 class RobotStateSnapshotRecord(Base):
     __tablename__ = "robot_state_snapshots"
 
@@ -2378,6 +2499,8 @@ class RobotTaskRequestRecord(Base):
     requested_by: Mapped[str] = mapped_column(String(255))
     origin_type: Mapped[str] = mapped_column(String(50))
     task_id: Mapped[str | None] = mapped_column(String(36))
+    task_step_id: Mapped[str | None] = mapped_column(String(36))
+    tool_execution_id: Mapped[str | None] = mapped_column(String(36))
     idempotency_key: Mapped[str | None] = mapped_column(String(100))
     confirmed_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
     requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -2397,7 +2520,9 @@ class RobotTaskRequestRecord(Base):
         CheckConstraint(
             "status IN ('created', 'awaiting_confirmation', 'rejected', 'submitted', "
             "'accepted', 'running', 'waiting_result', 'succeeded', 'failed', "
-            "'timeout', 'cancelled', 'safe_stopped', 'unavailable')",
+            "'timeout', 'cancelled', 'cancel_requested', 'stopping', "
+            "'cancel_failed', 'execution_state_unknown', 'safe_stopped', "
+            "'unavailable')",
             name="ck_robot_task_requests_status",
         ),
         CheckConstraint(
@@ -2407,6 +2532,8 @@ class RobotTaskRequestRecord(Base):
         CheckConstraint("timeout_seconds > 0", name="ck_robot_task_requests_timeout"),
         Index("ix_robot_task_requests_robot_status", "robot_id", "status"),
         Index("ix_robot_task_requests_task", "task_id"),
+        Index("ix_robot_task_requests_task_step", "task_step_id"),
+        Index("ix_robot_task_requests_tool_execution", "tool_execution_id"),
         Index("ix_robot_task_requests_correlation", "correlation_id"),
     )
 
@@ -2440,7 +2567,9 @@ class RobotEventRecord(Base):
         CheckConstraint(
             "event_type IN ('connection_changed', 'state_changed', 'safety_changed', "
             "'task_accepted', 'task_running', 'task_succeeded', 'task_failed', "
-            "'task_cancelled', 'task_safe_stopped', 'task_unavailable')",
+            "'task_cancelled', 'task_cancel_requested', 'task_stopping', "
+            "'task_cancel_failed', 'task_execution_unknown', "
+            "'task_safe_stopped', 'task_unavailable')",
             name="ck_robot_events_type",
         ),
         CheckConstraint(

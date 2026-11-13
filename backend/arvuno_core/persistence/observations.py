@@ -368,13 +368,29 @@ class ObservationIngestionBatchRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to mark an observation batch failed.") from exc
 
-    def cleanup_expired(self, *, now: datetime, retention_days: int = 30) -> int:
+    def cleanup_expired(
+        self,
+        *,
+        now: datetime,
+        retention_days: int = 30,
+        limit: int | None = None,
+    ) -> int:
+        if retention_days < 1 or (limit is not None and limit < 1):
+            raise ValueError("Retention period and limit must be positive")
         cutoff = now - timedelta(days=retention_days)
         try:
+            statement = (
+                select(ObservationIngestionBatch.id)
+                .where(ObservationIngestionBatch.received_at < cutoff)
+                .order_by(ObservationIngestionBatch.received_at, ObservationIngestionBatch.id)
+            )
+            if limit is not None:
+                statement = statement.limit(limit)
+            ids = list(self._session.scalars(statement))
+            if not ids:
+                return 0
             result = self._session.execute(
-                delete(ObservationIngestionBatch).where(
-                    ObservationIngestionBatch.received_at < cutoff
-                )
+                delete(ObservationIngestionBatch).where(ObservationIngestionBatch.id.in_(ids))
             )
             return int(result.rowcount or 0)
         except SQLAlchemyError as exc:

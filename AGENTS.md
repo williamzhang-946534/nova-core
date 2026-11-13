@@ -53,7 +53,7 @@ Arvuno Core 是个人 AI 环境感知与智能控制系统，核心价值是环�
 12. 数据访问必须经过仓储或清晰的 Repository 边界，业务逻辑不能直接依赖 SQLite 特有能力。
 13. 配置必须通过环境变量或本地配置文件管理，禁止在源码中写入 API Key。
 14. 优先使用成熟、低成本、可在 Windows 本地运行的技术。
-15. 机器人能力只允许出现在未来扩展文档中，不进入当前模块清单和接口设计。
+15. 当前只允许 Mock 桌面机器人状态、能力、授权和治理查询，以及经 Agent → Task System → Tool Registry → Safety Policy → Tool Executor 的受控执行链路。真实机器人物理执行、移动能力和 `legacy_mock_mobile` 执行保持锁定；Robot API 不提供物理动作入口。
 
 ## 后端规范
 
@@ -105,7 +105,11 @@ Arvuno Core 是个人 AI 环境感知与智能控制系统，核心价值是环�
 
 ## 当前阶段约束
 
-架构已确认，Phase 0–9 已完成，Phase 10 / 第一阶段 demo 验收已完成；真实模型、真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页与移动端复核均已通过，实体硬件验收不包含在该结论内，结果见 `docs/16-phase10-acceptance-report.md`。当前仓库允许维护 FastAPI/React 基础骨架、健康检查、配置、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、后台状态轮询、标准 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行与历史、AI Provider、Agent Runtime、Web 控制台核心页面、少量 Arvuno 上下文自动化、Web Console 站内通知、测试、格式化、环境变量示例和 Windows 启动配置。真实 Home Assistant 写操作必须保持默认关闭。任务步骤必须通过 Tool Executor 执行；AI 输出只能是候选意图和计划；自动化工具动作必须通过 Task System 和 Tool Executor 执行，且只允许 read_only 或 low_risk 自动执行；前端只能访问 Arvuno API，不得直接请求 Home Assistant 或伪造执行结果。未经用户确认，不得修改默认 Mock Provider 的 `unsupported` 安全行为，也不得进入下一阶段，不实现 Memory、会话持久化、Agent 自主规划、通用自动化编辑器、多渠道通知或 WebSocket 推送。环境上下文必须从 Device Registry 投影并在验证成功后同步；自身控制不得发布 `device_state_changed`。
+架构已确认，Phase 0–9 已完成，Phase 10 / 第一阶段 demo 验收已完成；真实模型、真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页与移动端复核均已通过，实体硬件验收不包含在该结论内，结果见 `docs/16-phase10-acceptance-report.md`。仓库 Phase 0–10 与长期 `ARS-02` 至 `ARS-06` 编号独立；历史验收结论不改写，ARS 阶段不因维护修复自动关闭。
+
+当前仓库允许维护 FastAPI/React 基础骨架、健康检查、配置、SQLite 数据模型、Alembic 迁移、Repository 边界、备份与多模态媒体备份、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、后台状态轮询、设备可用性状态投影、标准 Event Schema、带订阅者隔离的进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Memory、AI Provider、最小化 Provider Log、Agent Runtime、Robot Profile 与能力治理、Mock 桌面机器人、Web Console、保留策略调度、少量 Arvuno 上下文自动化、任务恢复、测试、格式化、CI、依赖锁定、环境变量示例和 Windows 启动配置。
+
+真实 Home Assistant 写操作必须保持默认关闭。任务步骤必须通过 Tool Executor 执行；AI 输出只能是候选意图和计划；自动化工具动作必须通过 Task System 和 Tool Executor 执行，且只允许 read_only 或 low_risk 自动执行；前端只能访问 Arvuno API。默认 Provider Log 只保存运行元数据，完整请求/响应调试日志默认关闭且只允许 development 短期开启；测试不得隐式读取根目录 `.env`。未经真实硬件安全审批，不得开放真实机器人物理运动或 `mobile_robot` 治理；机器人动作必须通过统一安全执行链，确认只能使用服务端一次性 Token，不接受客户端 `confirmed=true` 作为绕过通道。环境上下文必须从 Device Registry 投影并在验证成功后同步；自身控制不得发布 `device_state_changed`。
 
 ## 命名规范
 

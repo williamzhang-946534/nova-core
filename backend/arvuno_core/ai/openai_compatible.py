@@ -18,7 +18,7 @@ from arvuno_core.ai.errors import (
 )
 from arvuno_core.ai.logging_support import (
     finish_provider_log,
-    redacted_output,
+    redacted_provider_error,
     retry_delay,
     start_provider_log,
 )
@@ -43,6 +43,8 @@ class OpenAICompatibleProviderConfig:
     max_retries: int
     structured_output_mode: str = "json_schema"
     retry_backoff_seconds: float = 0.2
+    debug_logging: bool = False
+    debug_logging_ttl_seconds: int = 900
 
     def validate(self) -> None:
         missing = [
@@ -63,6 +65,8 @@ class OpenAICompatibleProviderConfig:
             raise ProviderConfigurationError("ARVUNO_AI_BASE_URL must be an HTTP URL.")
         if self.structured_output_mode not in STRUCTURED_OUTPUT_MODES:
             raise ProviderConfigurationError("Unsupported AI structured output mode.")
+        if self.debug_logging and self.debug_logging_ttl_seconds <= 0:
+            raise ProviderConfigurationError("Provider debug logging requires a positive TTL.")
 
 
 class OpenAICompatibleProvider:
@@ -93,10 +97,12 @@ class OpenAICompatibleProvider:
             provider="openai_compatible",
             model=config.model,
             request=request,
+            debug_logging=config.debug_logging,
+            debug_logging_ttl_seconds=config.debug_logging_ttl_seconds,
         )
         started_at = monotonic()
         try:
-            output, usage, mode, attempts = await self._generate_with_fallback(request)
+            output, usage, mode, _attempts = await self._generate_with_fallback(request)
         except Exception as exc:
             latency_ms = _duration_ms(started_at)
             try:
@@ -105,10 +111,11 @@ class OpenAICompatibleProvider:
                     log_id,
                     ProviderLogFinish(
                         status="failed",
-                        error={
-                            "code": getattr(exc, "code", "PROVIDER_ERROR"),
-                            "message": getattr(exc, "message", "The AI provider call failed."),
-                        },
+                        error=redacted_provider_error(
+                            {
+                                "code": getattr(exc, "code", "PROVIDER_ERROR"),
+                            }
+                        ),
                         latency_ms=latency_ms,
                     ),
                 )
@@ -123,13 +130,7 @@ class OpenAICompatibleProvider:
                 log_id,
                 ProviderLogFinish(
                     status="succeeded",
-                    output_summary=redacted_output(
-                        {
-                            "structured_output": output,
-                            "structured_output_mode": mode,
-                            "attempts": attempts,
-                        }
-                    ),
+                    output_summary={},
                     latency_ms=latency_ms,
                     prompt_tokens=usage.prompt_tokens,
                     completion_tokens=usage.completion_tokens,

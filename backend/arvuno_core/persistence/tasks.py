@@ -177,6 +177,8 @@ class TaskRepository:
                 entity.started_at = now
             if target in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
                 entity.completed_at = now
+            if target is TaskStatus.NEEDS_VERIFICATION:
+                entity.completed_at = now
             return _task(entity)
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to update the task status.") from exc

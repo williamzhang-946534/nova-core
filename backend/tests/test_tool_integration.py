@@ -235,14 +235,24 @@ def test_tools_api_requires_auth_and_executes_mock_tool(tmp_path: Path) -> None:
         assert no_token.status_code == 401
         assert invalid_token.status_code == 401
         assert catalog.status_code == 200
-        assert [item["name"] for item in catalog.json()["data"]] == [
+        assert {item["name"] for item in catalog.json()["data"]} == {
+            "robot_status",
+            "robot_capabilities",
+            "robot_task_history",
+            "robot_consents",
             "list_devices",
             "get_environment_state",
             "retrieve_memory",
             "query_history",
             "get_device_state",
             "control_device",
-        ]
+            "robot_observe_scene",
+            "robot_look_at",
+            "robot_speak",
+            "robot_listen",
+            "robot_safe_stop",
+            "robot_idle",
+        }
         assert devices.status_code == 200
         assert len(devices.json()["data"]["output"]["devices"]) == 6
         assert devices.json()["data"]["status"] == "completed"

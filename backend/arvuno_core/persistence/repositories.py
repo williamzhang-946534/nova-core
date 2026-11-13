@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Generic, TypeVar
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from arvuno_core.devices.models import DeviceAvailability
 from arvuno_core.persistence.exceptions import RepositoryError
 from arvuno_core.persistence.models import (
     Device,
@@ -27,6 +28,28 @@ from arvuno_core.tools.storage import (
 )
 
 ModelT = TypeVar("ModelT")
+
+
+def _availability(projection: Device) -> DeviceAvailability:
+    return DeviceAvailability(
+        device_id=projection.id,
+        availability=projection.availability_state,
+        failure_scope=projection.availability_failure_scope or "none",
+        error_code=projection.availability_error_code,
+        last_successful_read_at=_stored_datetime(
+            projection.availability_last_success_at or projection.last_seen_at
+        ),
+        last_failure_at=_stored_datetime(projection.availability_last_failure_at),
+        transitioned_at=_stored_datetime(projection.availability_transitioned_at),
+    )
+
+
+def _stored_datetime(value: datetime | None) -> datetime | None:
+    return _utc(value) if value is not None else None
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -53,6 +76,12 @@ class DeviceProjectionUpdate:
     capabilities: dict[str, Any]
     metadata_summary: dict[str, Any]
     last_seen_at: datetime | None
+    availability_state: str = "online"
+    availability_failure_scope: str | None = None
+    availability_error_code: str | None = None
+    availability_last_success_at: datetime | None = None
+    availability_last_failure_at: datetime | None = None
+    availability_transitioned_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +195,12 @@ class DeviceRepository(BaseRepository[Device]):
                     capabilities=update.capabilities,
                     metadata_summary=update.metadata_summary,
                     last_seen_at=update.last_seen_at,
+                    availability_state=update.availability_state,
+                    availability_failure_scope=update.availability_failure_scope,
+                    availability_error_code=update.availability_error_code,
+                    availability_last_success_at=update.availability_last_success_at,
+                    availability_last_failure_at=update.availability_last_failure_at,
+                    availability_transitioned_at=update.availability_transitioned_at,
                 )
                 self._session.add(projection)
                 self._session.flush()
@@ -196,9 +231,74 @@ class DeviceRepository(BaseRepository[Device]):
                 projection.capabilities = capabilities
                 projection.metadata_summary = update.metadata_summary
                 projection.last_seen_at = update.last_seen_at
+                projection.availability_state = update.availability_state
+                projection.availability_failure_scope = update.availability_failure_scope
+                projection.availability_error_code = update.availability_error_code
+                projection.availability_last_success_at = update.availability_last_success_at
+                projection.availability_last_failure_at = update.availability_last_failure_at
+                projection.availability_transitioned_at = update.availability_transitioned_at
             return projection
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to save a device projection.") from exc
+
+    def get_availability(self, device_id: str) -> DeviceAvailability:
+        try:
+            projection = self.get_by_id(device_id)
+            if projection is None:
+                raise RepositoryError("Device projection does not exist.")
+            return _availability(projection)
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read device availability.") from exc
+
+    def transition_availability(
+        self,
+        device_id: str,
+        *,
+        unavailable: bool,
+        error_code: str | None,
+        failure_scope: str,
+        read_at: datetime,
+    ) -> tuple[DeviceAvailability, DeviceAvailability, bool]:
+        try:
+            projection = self.get_by_id(device_id)
+            if projection is None:
+                raise RepositoryError("Device projection does not exist.")
+            previous = _availability(projection)
+            transitioned = False
+
+            if unavailable:
+                if previous.availability != "unavailable":
+                    transitioned = True
+                    projection.availability_state = "unavailable"
+                    projection.availability_transitioned_at = read_at
+                projection.availability_failure_scope = failure_scope
+                projection.availability_error_code = error_code
+                projection.availability_last_failure_at = read_at
+                projection.is_online = False
+            else:
+                failure_times = [
+                    value
+                    for value in (previous.last_failure_at, previous.transitioned_at)
+                    if value is not None
+                ]
+                if (
+                    previous.availability == "unavailable"
+                    and failure_times
+                    and _utc(read_at) < max(_utc(value) for value in failure_times)
+                ):
+                    return previous, previous, False
+                if previous.availability != "online":
+                    transitioned = True
+                    projection.availability_state = "online"
+                    projection.availability_transitioned_at = read_at
+                projection.availability_failure_scope = "none"
+                projection.availability_error_code = None
+                projection.availability_last_success_at = read_at
+                projection.is_online = True
+
+            return previous, _availability(projection), transitioned
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to update device availability.") from exc
 
     def disable_not_in_external_ids(self, adapter_id: str, external_ids: list[str]) -> int:
         try:
@@ -438,21 +538,32 @@ class EventRepository(BaseRepository[Event]):
         retention_days: int,
         diagnostic_retention_days: int,
         long_term_event_types: list[str],
+        limit: int | None = None,
     ) -> int:
         if retention_days < 1 or diagnostic_retention_days < 1:
             raise ValueError("Retention periods must be positive")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         try:
             default_cutoff = now - timedelta(days=retention_days)
             diagnostic_cutoff = now - timedelta(days=diagnostic_retention_days)
-            result = self._session.execute(
-                delete(Event).where(
+            statement = (
+                select(Event.id)
+                .where(
                     Event.event_type.not_in(long_term_event_types),
                     (
                         (Event.occurred_at < default_cutoff)
                         | ((Event.source == "system") & (Event.occurred_at < diagnostic_cutoff))
                     ),
                 )
+                .order_by(Event.occurred_at, Event.id)
             )
+            if limit is not None:
+                statement = statement.limit(limit)
+            ids = list(self._session.scalars(statement))
+            if not ids:
+                return 0
+            result = self._session.execute(delete(Event).where(Event.id.in_(ids)))
             return int(result.rowcount or 0)
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to clean up expired events.") from exc
@@ -546,6 +657,34 @@ class EnvironmentRepository(BaseRepository[Environment]):
             return snapshots, int(count)
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to list environment snapshots.") from exc
+
+    def cleanup_expired_snapshots(
+        self,
+        *,
+        now: datetime,
+        retention_days: int,
+        limit: int,
+    ) -> int:
+        if retention_days < 1 or limit < 1:
+            raise ValueError("Retention period and limit must be positive")
+        try:
+            cutoff = now - timedelta(days=retention_days)
+            ids = list(
+                self._session.scalars(
+                    select(EnvironmentSnapshot.id)
+                    .where(EnvironmentSnapshot.created_at < cutoff)
+                    .order_by(EnvironmentSnapshot.created_at, EnvironmentSnapshot.id)
+                    .limit(limit)
+                )
+            )
+            if not ids:
+                return 0
+            result = self._session.execute(
+                delete(EnvironmentSnapshot).where(EnvironmentSnapshot.id.in_(ids))
+            )
+            return int(result.rowcount or 0)
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to clean up expired environment snapshots.") from exc
 
 
 class ToolRepository(BaseRepository[Tool]):

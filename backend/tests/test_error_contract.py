@@ -1,11 +1,24 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from arvuno_core.app import create_app
+from arvuno_core.config import Settings
 from arvuno_core.devices.errors import AdapterTimeoutError, AdapterUnavailableError
 
 
-def test_request_validation_uses_standard_error_contract() -> None:
-    app = create_app()
+def isolated_settings(tmp_path: Path) -> Settings:
+    return Settings(
+        _env_file=None,
+        environment="test",
+        data_dir=tmp_path / "data",
+        log_dir=tmp_path / "logs",
+        backup_dir=tmp_path / "backups",
+    )
+
+
+def test_request_validation_uses_standard_error_contract(tmp_path: Path) -> None:
+    app = create_app(isolated_settings(tmp_path))
 
     @app.get("/__validation_test")
     def validation_test(value: int) -> dict[str, int]:
@@ -21,8 +34,8 @@ def test_request_validation_uses_standard_error_contract() -> None:
     assert error["details"]["errors"][0]["location"] == ["query", "value"]
 
 
-def test_unexpected_error_hides_internal_details() -> None:
-    app = create_app()
+def test_unexpected_error_hides_internal_details(tmp_path: Path) -> None:
+    app = create_app(isolated_settings(tmp_path))
 
     @app.get("/__internal_error_test")
     def internal_error_test() -> None:
@@ -38,8 +51,8 @@ def test_unexpected_error_hides_internal_details() -> None:
     assert "sensitive internal detail" not in response.text
 
 
-def test_device_adapter_errors_use_structured_api_contract() -> None:
-    app = create_app()
+def test_device_adapter_errors_use_structured_api_contract(tmp_path: Path) -> None:
+    app = create_app(isolated_settings(tmp_path))
 
     @app.get("/__adapter_unavailable_test")
     def adapter_unavailable_test() -> None:

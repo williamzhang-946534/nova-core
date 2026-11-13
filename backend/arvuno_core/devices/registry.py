@@ -9,6 +9,7 @@ from pydantic import Field
 from arvuno_core.devices.interface import DeviceAdapter
 from arvuno_core.devices.models import (
     Device,
+    DeviceAvailability,
     DeviceCapability,
     DeviceEvent,
     DevicePermissions,
@@ -36,6 +37,13 @@ class DeviceSyncResult:
     disabled_devices: int
     state_snapshots: int = 0
     states: tuple[DeviceState, ...] = ()
+
+
+@dataclass(frozen=True)
+class DeviceAvailabilityTransition:
+    previous: DeviceAvailability
+    current: DeviceAvailability
+    transitioned: bool
 
 
 class DeviceRegistry:
@@ -160,6 +168,36 @@ class DeviceRegistry:
 
         return await self._read(execute)
 
+    async def availability(self, device_id: str) -> DeviceAvailability:
+        def execute(devices: Any) -> DeviceAvailability:
+            return devices.get_availability(device_id)
+
+        return await self._read(execute)
+
+    async def mark_availability(
+        self,
+        device_id: str,
+        *,
+        unavailable: bool,
+        error_code: str | None = None,
+        failure_scope: str = "none",
+        read_at: datetime,
+    ) -> DeviceAvailabilityTransition:
+        def execute() -> DeviceAvailabilityTransition:
+            with self._unit_of_work_factory() as uow:
+                assert uow.devices is not None
+                previous, current, transitioned = uow.devices.transition_availability(
+                    device_id,
+                    unavailable=unavailable,
+                    error_code=error_code,
+                    failure_scope=failure_scope,
+                    read_at=read_at,
+                )
+                uow.commit()
+                return DeviceAvailabilityTransition(previous, current, transitioned)
+
+        return await asyncio.to_thread(execute)
+
     async def record_observed_state(
         self,
         device_id: str,
@@ -233,6 +271,7 @@ def _projection_update(
         "aliases": device.aliases,
         "permissions": device.permissions.model_dump(mode="json"),
     }
+    entity_unavailable = state is not None and state.state == DeviceStateName.UNAVAILABLE
     return DeviceProjectionUpdate(
         adapter_id=adapter.adapter_id,
         external_id=device.external_id,
@@ -248,6 +287,12 @@ def _projection_update(
         capabilities={"entries": entries, "profile": profile},
         metadata_summary=device.metadata,
         last_seen_at=state.observed_at if state is not None else None,
+        availability_state="unavailable" if entity_unavailable else "online",
+        availability_failure_scope="entity" if entity_unavailable else "none",
+        availability_error_code="device_unavailable" if entity_unavailable else None,
+        availability_last_success_at=state.observed_at if state is not None else None,
+        availability_last_failure_at=state.observed_at if entity_unavailable else None,
+        availability_transitioned_at=state.observed_at if state is not None else None,
     )
 
 

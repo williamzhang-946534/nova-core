@@ -386,11 +386,19 @@ class ProactiveService:
 
         return await asyncio.to_thread(execute)
 
-    async def cleanup_expired(self) -> int:
+    async def cleanup_expired(
+        self,
+        *,
+        now: datetime | None = None,
+        limit: int | None = None,
+    ) -> int:
         def execute() -> int:
             with self._unit_of_work_factory() as unit_of_work:
                 assert unit_of_work.proactive is not None
-                count = unit_of_work.proactive.expire_stale(now=self._now())
+                count = unit_of_work.proactive.expire_stale(
+                    now=now or self._now(),
+                    limit=limit,
+                )
                 unit_of_work.commit()
                 return count
 

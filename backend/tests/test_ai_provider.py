@@ -127,8 +127,10 @@ def test_openai_provider_parses_structured_output_and_redacts_logs() -> None:
     assert requests[0].headers["Authorization"] == "Bearer provider-secret"
     assert requests[0].url.path.endswith("/chat/completions")
     assert store.starts[0].input_summary["correlation_id"] == "correlation-provider"
+    assert store.starts[0].input_summary["message_count"] == 1
     assert "provider-secret" not in json.dumps(store.starts[0].input_summary)
     assert store.finishes["provider-log-success"].status == "succeeded"
+    assert store.finishes["provider-log-success"].output_summary == {}
 
 
 def test_openai_provider_falls_back_when_json_schema_is_unsupported() -> None:
@@ -159,7 +161,7 @@ def test_openai_provider_falls_back_when_json_schema_is_unsupported() -> None:
     assert first_payload["response_format"]["type"] == "json_schema"
     assert second_payload["response_format"] == {"type": "json_object"}
     assert response.provider_log_id == "provider-log-fallback"
-    assert store.finishes["provider-log-fallback"].output_summary["attempts"] == 2
+    assert store.finishes["provider-log-fallback"].output_summary == {}
 
 
 def test_openai_provider_retries_transient_errors_a_bounded_number_of_times() -> None:
@@ -188,7 +190,7 @@ def test_openai_provider_retries_transient_errors_a_bounded_number_of_times() ->
 
     assert len(requests) == 3
     assert response.output == {"ok": True}
-    assert store.finishes["provider-log-retry"].output_summary["attempts"] == 3
+    assert store.finishes["provider-log-retry"].output_summary == {}
 
 
 def test_openai_provider_does_not_retry_authentication_errors() -> None:
@@ -323,8 +325,10 @@ def test_mock_provider_and_sql_store_persist_redacted_logs(tmp_path: Path) -> No
         assert record.provider == "mock"
         assert record.status == "succeeded"
         assert record.input_summary["correlation_id"] == "correlation-provider"
+        assert record.input_summary["message_count"] == 1
+        assert "messages" not in record.input_summary
         assert "model-should-not-persist-this" not in json.dumps(record.output_summary)
-        assert record.output_summary["structured_output"]["api_key"] == "[REDACTED]"
+        assert record.output_summary == {}
         assert record.prompt_tokens == 1
         assert record.completion_tokens == 1
     finally:

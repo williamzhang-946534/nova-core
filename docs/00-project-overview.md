@@ -5,12 +5,12 @@
 | 项目 | 状态 |
 | --- | --- |
 | 项目目录 | `E:\williamzhang\zzh\zzh-personal-project\nova` |
-| 当前阶段 | Phase 10 / 第一阶段验收已完成；真实 DeepSeek、真实 HA demo 读/写与断线/重连、Web Console 与移动端复核均已通过（见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)） |
-| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、备份恢复、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、Event Schema、进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、历史查询、任务事件、AI Provider、Mock Provider、Agent Runtime、`/api/chat`、Web 控制台和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 读/写链路、断线/重连已接入并冒烟通过，实体硬件仍未验收 |
+| 当前阶段 | Phase 10 / 第一阶段历史验收已完成；REPAIR-01 安全、隐私、保留、事件、任务和 Mock 机器人治理修复待用户复核（见 [37-remediation-acceptance-report.md](37-remediation-acceptance-report.md)） |
+| 代码状态 | 前后端骨架、健康检查、数据模型、迁移、Repository、数据库与多模态媒体备份、统一设备接口、Home Assistant Adapter、Mock Adapter、轻量 Device Registry、后台状态轮询、设备可用性状态转换、Event Schema、带订阅者隔离的进程内 Event Bus、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、任务执行、任务恢复、历史查询、任务事件、AI Provider、Mock Provider、最小化 Provider Log、Agent Runtime、`/api/chat`、Memory、多模态按需处理、统一保留调度、Mock 桌面机器人治理/安全工具/管理页和 Arvuno 上下文自动化均已实现；真实模型与真实 Home Assistant demo 保留 Phase 10 历史结论，真实机器人和实体硬件仍未验收 |
 | 架构确认 | 已确认 |
 | 第一阶段运行环境 | Windows 11 本地 |
 
-本文档集是 Arvuno Core 的架构基线。架构已获得确认，Phase 0–9 的代码已完成，Phase 10 稳定化验收已执行并留下报告。自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter、Mock AI Provider 和显式候选计划；真实模型与真实 Home Assistant demo 已做限定范围验收，但代码仍不包含 Memory、会话持久化、Agent 自主规划或多渠道通知。
+本文档集是 Arvuno Core 的架构基线。架构已获得确认，Phase 0–9 的代码已完成，Phase 10 稳定化验收已执行并留下报告。自动化测试使用 Home Assistant 模拟响应、Mock Device Adapter、Mock Robot Adapter、Mock AI Provider、隔离 SQLite 测试库和显式候选计划；真实模型与真实 Home Assistant demo 已做限定范围验收。当前代码包含 Memory 基础版、多模态按需处理、Mock 桌面机器人治理和保留调度，但真实机器人物理执行保持锁定。
 
 ## 项目背景
 
@@ -125,6 +125,6 @@ Arvuno Core 应采用 Windows 本地运行的模块化单体架构。第一阶�
 1. Home Assistant 继续负责设备集成、发现、协议适配、完整设备历史和基础自动化。
 2. Arvuno 只保存设备投影、上下文事件、任务审计和用户偏好，不复制 Home Assistant 的平台能力。
 3. Agent 只产生候选意图和计划，不接触数据库实现、SQL 或设备协议客户端。
-4. 机器人只在 [15-future-extension.md](15-future-extension.md) 中作为远期方向记录，当前模块清单和接口设计中没有机器人模块。
+4. 当前只有 `desktop_robot` Mock Profile 进入治理和安全执行链；能力限于 `report_status`、`look_at`、`observe_scene`、`request_safe_stop`、`enter_idle_pose`、`speak` 和 `listen`。`mobile_robot` 只保留接口且治理锁定；真实机器人运动控制、`navigate_to`、`return_to_dock` 和 `charge` 不开放，也不得用 Mock 结果冒充硬件验收。
 
 Phase 10 稳定化验收已执行并完成第一阶段 demo 验收。F1 环境上下文问题已补充修复并复验，真实 DeepSeek 与真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页复核和移动端宽度检查已通过，结果见 [16-phase10-acceptance-report.md](16-phase10-acceptance-report.md)。验收后真实 Home Assistant 写操作保持默认关闭；真实模型只在显式配置后启用。实体硬件验收和新阶段开发均需另行安排与确认。

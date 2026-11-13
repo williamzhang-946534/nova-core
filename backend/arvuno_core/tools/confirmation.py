@@ -11,6 +11,7 @@ class ConfirmationSubject:
     tool_name: str
     input_fingerprint: str
     task_id: str | None
+    execution_id: str | None = None
 
     def fingerprint(self) -> str:
         return hashlib.sha256(
@@ -19,6 +20,7 @@ class ConfirmationSubject:
                     self.tool_name,
                     self.input_fingerprint,
                     self.task_id or "",
+                    self.execution_id or "",
                 ]
             ).encode("utf-8")
         ).hexdigest()

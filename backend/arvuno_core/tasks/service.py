@@ -27,6 +27,7 @@ from arvuno_core.tasks.models import (
     TaskCreate,
     TaskCreateRecord,
     TaskPage,
+    TaskRecoveryResult,
     TaskRunResult,
     TaskStatus,
     TaskStepCreateRecord,
@@ -67,6 +68,17 @@ class TaskEventPublisherProtocol(Protocol):
     async def publish(self, event: ArvunoEvent) -> None: ...
 
 
+class TaskLifecycleObserverProtocol(Protocol):
+    async def on_task_waiting_confirmation(self, task_id: str) -> None: ...
+
+    async def on_task_terminal(
+        self,
+        task_id: str,
+        status: TaskStatus,
+        error: dict[str, Any] | None,
+    ) -> None: ...
+
+
 class TaskService:
     """Executes explicit task plans through the audited tool boundary."""
 
@@ -91,6 +103,7 @@ class TaskService:
         self._executor_accepts_confirmation_hint = (
             "requires_confirmation" in signature(tool_executor.execute).parameters
         )
+        self.lifecycle_observer: TaskLifecycleObserverProtocol | None = None
 
     async def create_task(
         self,
@@ -187,6 +200,10 @@ class TaskService:
             return TaskRunResult(await self.get_task_detail(task_id))
         remaining = self._remaining_seconds(task)
         if remaining <= 0:
+            steps = await self._steps(task_id)
+            if any(step.status is TaskStepStatus.RUNNING for step in steps):
+                await self._mark_execution_unknown(task_id)
+                return TaskRunResult(await self.get_task_detail(task_id))
             await self.cancel(task_id, reason="The task timed out while it was recoverable.")
             return TaskRunResult(await self.get_task_detail(task_id))
         return await self._execute_steps(task_id, remaining)
@@ -203,7 +220,12 @@ class TaskService:
             raise TaskNotFoundError
         token_hash = _token_hash(confirmation_token)
         used_hashes = _used_confirmation_hashes(task.plan)
-        if task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        if task.status in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+            TaskStatus.NEEDS_VERIFICATION,
+        }:
             if token_hash in used_hashes:
                 return TaskRunResult(await self.get_task_detail(task_id))
             raise TaskStateError("The task is no longer waiting for confirmation.")
@@ -268,6 +290,8 @@ class TaskService:
                         correlation_id=task.correlation_id or task_id,
                         task_id=task_id,
                         task_step_id=step.id,
+                        task_system=True,
+                        tool_execution_id=active.get("execution_id"),
                     ),
                     confirmation_token=confirmation_token,
                     requires_confirmation=requires_confirmation,
@@ -327,7 +351,12 @@ class TaskService:
         task = await self.get_task(task_id)
         if task is None:
             raise TaskNotFoundError
-        if task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}:
+        if task.status in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+            TaskStatus.NEEDS_VERIFICATION,
+        }:
             raise TaskStateError("A completed task cannot be cancelled.")
         now = self._now()
         error = {
@@ -366,7 +395,82 @@ class TaskService:
         detail = await self.get_task_detail(task_id)
         if detail is None:
             raise TaskStateError("The task could not be cancelled.")
+        await self._notify_terminal(task_id, TaskStatus.CANCELLED, detail.error)
         return detail
+
+    async def recover_tasks(self) -> TaskRecoveryResult:
+        """Finish or quarantine work interrupted by a process restart.
+
+        Pending and planning tasks had not issued a tool call, so they may safely
+        continue. A running tool call has an unknown external result and is not
+        blindly repeated. A persisted waiting task cannot be confirmed after a
+        restart because process-local confirmation tokens are intentionally lost.
+        """
+
+        result = TaskRecoveryResult([], [], [], [])
+        for status in (
+            TaskStatus.PENDING,
+            TaskStatus.PLANNING,
+            TaskStatus.WAITING_CONFIRMATION,
+            TaskStatus.RUNNING,
+        ):
+            page = await self.list(status=status.value, page_size=100)
+            for task in page.items:
+                if task.status is TaskStatus.PENDING:
+                    if self._remaining_seconds(task) <= 0:
+                        await self.cancel(
+                            task.id,
+                            reason="The task expired before startup recovery.",
+                        )
+                        result.timed_out_task_ids.append(task.id)
+                    else:
+                        await self.run_task(task.id)
+                        result.resumed_task_ids.append(task.id)
+                elif task.status is TaskStatus.PLANNING:
+                    if self._remaining_seconds(task) <= 0:
+                        await self.cancel(
+                            task.id,
+                            reason="The task expired before startup recovery.",
+                        )
+                        result.timed_out_task_ids.append(task.id)
+                    else:
+                        await self._resume_planning_task(task.id)
+                        result.resumed_task_ids.append(task.id)
+                elif task.status is TaskStatus.WAITING_CONFIRMATION:
+                    await self.cancel(
+                        task.id,
+                        reason="The confirmation token was lost during application restart.",
+                    )
+                    result.waiting_cancelled_task_ids.append(task.id)
+                elif task.status is TaskStatus.RUNNING:
+                    steps = await self._steps(task.id)
+                    has_running_step = any(step.status is TaskStepStatus.RUNNING for step in steps)
+                    has_pending_step = any(step.status is TaskStepStatus.PENDING for step in steps)
+                    all_completed = bool(steps) and all(
+                        step.status is TaskStepStatus.COMPLETED for step in steps
+                    )
+                    if all_completed:
+                        detail = await self.get_task_detail(task.id)
+                        await self._finalize_all_steps_completed(task.id, detail)
+                        current = await self.get_task(task.id)
+                        if current is not None and current.status is TaskStatus.COMPLETED:
+                            result.resumed_task_ids.append(task.id)
+                    elif has_running_step:
+                        await self._mark_execution_unknown(task.id)
+                        result.unknown_task_ids.append(task.id)
+                    elif self._remaining_seconds(task) <= 0:
+                        await self.cancel(
+                            task.id,
+                            reason="The task timed out during application restart.",
+                        )
+                        result.timed_out_task_ids.append(task.id)
+                    elif has_pending_step:
+                        await self.resume_task(task.id)
+                        result.resumed_task_ids.append(task.id)
+                    else:
+                        await self._mark_execution_unknown(task.id)
+                        result.unknown_task_ids.append(task.id)
+        return result
 
     async def list(
         self,
@@ -439,6 +543,7 @@ class TaskService:
                                 correlation_id=detail.correlation_id or task_id,
                                 task_id=task_id,
                                 task_step_id=step.id,
+                                task_system=True,
                             ),
                             confirmation_token=None,
                             requires_confirmation=_step_requires_confirmation(
@@ -481,9 +586,20 @@ class TaskService:
                 (item for item in steps if item.status is TaskStepStatus.RUNNING),
                 None,
             )
-            if current_step is None:
-                return TaskRunResult(await self.get_task_detail(task_id))
+            all_completed = bool(steps) and all(
+                item.status is TaskStepStatus.COMPLETED for item in steps
+            )
+            if current_step is None and all_completed:
+                detail = await self.get_task_detail(task_id)
+                finalized = await self._finalize_all_steps_completed(task_id, detail)
+                return TaskRunResult(finalized)
             task = await self.get_task(task_id)
+            if current_step is None:
+                await self.cancel(
+                    task_id,
+                    reason="The task timed out before the next step could execute.",
+                )
+                return TaskRunResult(await self.get_task_detail(task_id))
             await self._fail_task(
                 task_id,
                 current_step.id,
@@ -591,6 +707,11 @@ class TaskService:
         if detail is None:
             raise TaskNotFoundError
         if detail.status is TaskStatus.COMPLETED:
+            await self._notify_terminal(
+                task_id,
+                TaskStatus.COMPLETED,
+                None,
+            )
             await self._publish_task_completed(detail)
         return detail
 
@@ -637,6 +758,7 @@ class TaskService:
         except ValueError as exc:
             raise TaskStateError(str(exc)) from exc
         detail = await self.get_task_detail(task_id)
+        await self._notify_waiting_confirmation(task_id)
         return TaskRunResult(detail, confirmation_token=token)
 
     async def _fail_task(
@@ -648,6 +770,11 @@ class TaskService:
         timed_out: bool = False,
     ) -> None:
         now = self._now()
+        if timed_out:
+            details = dict(error.get("details") or {})
+            details["execution_state"] = "unknown"
+            details["requires_verification"] = True
+            error = {**error, "details": details}
 
         def persist() -> StoredTask | None:
             with self._unit_of_work_factory() as unit_of_work:
@@ -660,7 +787,7 @@ class TaskService:
                 )
                 task = repository.update_task_status(
                     task_id,
-                    TaskStatus.FAILED,
+                    TaskStatus.NEEDS_VERIFICATION if timed_out else TaskStatus.FAILED,
                     now=now,
                     plan=_current_plan(repository, task_id),
                     error=error,
@@ -678,7 +805,102 @@ class TaskService:
         except ValueError:
             task = await self.get_task(task_id)
         if task is not None:
+            await self._notify_terminal(task_id, task.status, error)
             await self._publish_task_failed(task, step_id, error)
+
+    async def _resume_planning_task(self, task_id: str) -> TaskRunResult:
+        task = await self.get_task(task_id)
+        if task is None:
+            raise TaskNotFoundError
+
+        def persist() -> StoredTask:
+            with self._unit_of_work_factory() as unit_of_work:
+                running = _tasks(unit_of_work).update_task_status(
+                    task_id,
+                    TaskStatus.RUNNING,
+                    now=self._now(),
+                    plan=task.plan,
+                )
+                unit_of_work.commit()
+                return running
+
+        try:
+            running = await asyncio.to_thread(persist)
+        except ValueError as exc:
+            raise TaskStateError(str(exc)) from exc
+        await self._publish_task_started(running)
+        return await self._execute_steps(
+            task_id,
+            running.plan.get("timeout_seconds", 60.0),
+        )
+
+    async def _finalize_all_steps_completed(
+        self,
+        task_id: str,
+        detail: StoredTaskDetail,
+    ) -> StoredTaskDetail:
+        now = self._now()
+
+        def persist() -> StoredTaskDetail | None:
+            with self._unit_of_work_factory() as unit_of_work:
+                repository = _tasks(unit_of_work)
+                current = repository.get_detail(task_id)
+                if (
+                    current is None
+                    or current.status is not TaskStatus.RUNNING
+                    or not current.steps
+                    or any(step.status is not TaskStepStatus.COMPLETED for step in current.steps)
+                ):
+                    unit_of_work.commit()
+                    return current
+                result_payload = {
+                    "status": TaskStatus.COMPLETED.value,
+                    "completed_steps": len(current.steps),
+                    "execution_ids": [execution.id for execution in current.executions],
+                }
+                repository.update_task_status(
+                    task_id,
+                    TaskStatus.COMPLETED,
+                    now=now,
+                    plan=current.plan,
+                    result=result_payload,
+                    error=None,
+                )
+                unit_of_work.commit()
+                return repository.get_detail(task_id)
+
+        try:
+            updated = await asyncio.to_thread(persist)
+        except ValueError as exc:
+            raise TaskStateError(str(exc)) from exc
+        if updated is None:
+            raise TaskNotFoundError
+        if updated.status is TaskStatus.COMPLETED:
+            await self._notify_terminal(task_id, TaskStatus.COMPLETED, None)
+            await self._publish_task_completed(updated)
+        return updated
+
+    async def _mark_execution_unknown(self, task_id: str) -> None:
+        steps = await self._steps(task_id)
+        step = next(
+            (item for item in steps if item.status is TaskStepStatus.RUNNING),
+            next((item for item in steps if item.status is TaskStepStatus.PENDING), None),
+        )
+        if step is None:
+            return
+        await self._fail_task(
+            task_id,
+            step.id,
+            {
+                "code": "TASK_EXECUTION_UNKNOWN",
+                "message": "The application restarted while the task was running.",
+                "details": {
+                    "execution_state": "unknown",
+                    "requires_verification": True,
+                },
+            },
+            timed_out=True,
+        )
 
     async def _steps(self, task_id: str) -> list[StoredTaskStep]:
         def query() -> list[StoredTaskStep]:
@@ -785,6 +1007,35 @@ class TaskService:
                     "task_id": event.subject_id,
                     "correlation_id": event.correlation_id,
                 },
+            )
+
+    async def _notify_waiting_confirmation(self, task_id: str) -> None:
+        observer = self.lifecycle_observer
+        if observer is None:
+            return
+        try:
+            await observer.on_task_waiting_confirmation(task_id)
+        except Exception:
+            logger.exception(
+                "task_waiting_confirmation_observer_failed",
+                extra={"task_id": task_id},
+            )
+
+    async def _notify_terminal(
+        self,
+        task_id: str,
+        status: TaskStatus,
+        error: dict[str, Any] | None,
+    ) -> None:
+        observer = self.lifecycle_observer
+        if observer is None:
+            return
+        try:
+            await observer.on_task_terminal(task_id, status, error)
+        except Exception:
+            logger.exception(
+                "task_terminal_observer_failed",
+                extra={"task_id": task_id, "payload": {"task_status": status.value}},
             )
 
     def _remaining_seconds(self, task: StoredTask) -> float:

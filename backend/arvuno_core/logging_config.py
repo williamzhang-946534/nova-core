@@ -1,5 +1,6 @@
 import json
 import logging
+import logging.handlers
 import re
 import sys
 from contextvars import ContextVar
@@ -58,7 +59,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
-def configure_logging(level: str, log_file: Path | None = None) -> None:
+def configure_logging(
+    level: str,
+    log_file: Path | None = None,
+    *,
+    max_bytes: int = 10 * 1024 * 1024,
+    backup_count: int = 5,
+) -> None:
     formatter = JsonFormatter()
     correlation_filter = CorrelationIdFilter()
     handlers: list[logging.Handler] = []
@@ -70,7 +77,12 @@ def configure_logging(level: str, log_file: Path | None = None) -> None:
 
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
         file_handler.setFormatter(formatter)
         file_handler.addFilter(correlation_filter)
         handlers.append(file_handler)

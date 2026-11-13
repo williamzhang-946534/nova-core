@@ -452,7 +452,7 @@ def test_task_confirmation_token_is_required_validated_and_idempotent(
         assert task.steps[0].started_at == started_at
         assert query_task(manager, task.id).steps[0].started_at == started_at
         assert query_events(manager, task.correlation_id or "").count("user_confirmed") == 1
-        assert len(query_task(manager, task.id).executions) == 2
+        assert len(query_task(manager, task.id).executions) == 1
     finally:
         manager.dispose()
 
@@ -597,7 +597,7 @@ class DelayedToolExecutor:
         raise RuntimeError("unexpected executor failure after delay")
 
 
-def test_task_timeout_marks_step_timed_out_and_task_failed(tmp_path: Path) -> None:
+def test_task_timeout_preserves_an_execution_unknown_state(tmp_path: Path) -> None:
     manager = DatabaseManager(phase_settings(tmp_path))
     try:
         manager.initialize_database()
@@ -617,10 +617,12 @@ def test_task_timeout_marks_step_timed_out_and_task_failed(tmp_path: Path) -> No
             )
 
         result = asyncio.run(scenario())
-        assert result.task.status is TaskStatus.FAILED
+        assert result.task.status is TaskStatus.NEEDS_VERIFICATION
         assert result.task.steps[0].status is TaskStepStatus.TIMED_OUT
         assert result.task.error is not None
         assert result.task.error["code"] == "TASK_TIMEOUT"
+        assert result.task.error["details"]["execution_state"] == "unknown"
+        assert result.task.error["details"]["requires_verification"] is True
     finally:
         manager.dispose()
 
@@ -863,7 +865,7 @@ def test_tasks_api_requires_auth_and_exposes_task_lifecycle(tmp_path: Path) -> N
         assert confirmed.status_code == 200
         assert confirmed.json()["data"]["status"] == "completed"
         assert len(confirmed.json()["data"]["steps"]) == 1
-        assert len(confirmed.json()["data"]["executions"]) == 2
+        assert len(confirmed.json()["data"]["executions"]) == 1
         assert missing.status_code == 404
         assert cancel.status_code == 409
         assert invalid_status.status_code == 400

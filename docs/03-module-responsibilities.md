@@ -13,7 +13,7 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 - Logging 由统一的日志基础设施提供。
 - Scheduler 由轻量后台任务调度器提供，用于健康检查、设备刷新和自动化评估。
 
-当前模块清单不包含机器人、语音、视觉或多 Agent 模块。机器人只在远期扩展文档中记录，进入开发前必须先补充独立安全设计和架构决策。
+当前模块清单在第一阶段基础上补充了 Memory、多模态按需处理、Robot Integration、Retention Scheduler 和机器人管理界面。Robot Integration 只承载 Adapter 事实投影、Profile、能力治理、Consent、心跳/失效安全和事件记录；所有 Agent 动作必须进入 Tool System 统一链路，直接物理动作 API 保持锁定。语音和视觉只作为按需多模态能力，持续监控和真实硬件采集不在当前安全审批范围内。
 
 ## 模块清单
 
@@ -35,6 +35,9 @@ Logging 与 Scheduler 不作为业务模块单独实现，而是横切能力：
 | Observability | 日志、健康检查和调用追踪 | 第一阶段基础版 |
 | Scheduler | 定时任务和后台刷新 | 第一阶段基础版 |
 | Notification | 向用户输出提醒 | 第一阶段基础版 |
+| Multimodal Perception | 按需图像、语音和媒体资产治理 | ARS-05 Mock 基础版 |
+| Robot Integration | Robot Profile、Adapter 投影、能力治理、Consent、心跳和失效安全 | ARS-06 Mock / 真实硬件锁定 |
+| Retention Scheduler | 统一调度业务模块独立清理任务 | REPAIR-01 |
 | Frontend Dashboard | 提供控制和观测界面 | 第一阶段 |
 
 ## 1. API Layer

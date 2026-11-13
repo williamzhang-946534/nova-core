@@ -11,25 +11,41 @@ from sqlalchemy.orm import Session
 from arvuno_core.persistence.exceptions import RepositoryError
 from arvuno_core.persistence.models import (
     Robot,
+    RobotCapabilityGovernanceRecord,
     RobotCapabilityRecord,
+    RobotConsentRecord,
     RobotEventRecord,
     RobotStateSnapshotRecord,
     RobotTaskRequestRecord,
 )
-from arvuno_core.robots.errors import RobotNotFoundError, RobotTaskNotFoundError
+from arvuno_core.robots.errors import (
+    RobotCapabilityGovernanceError,
+    RobotConsentNotFoundError,
+    RobotNotFoundError,
+    RobotTaskIdempotencyConflictError,
+    RobotTaskNotFoundError,
+)
 from arvuno_core.robots.models import (
     RegisteredRobot,
     RegisteredRobotTaskRequest,
     RobotCapability,
     RobotCapabilityName,
+    RobotConsent,
+    RobotConsentGrant,
     RobotDefinition,
     RobotDeviceStates,
     RobotEvent,
     RobotLocation,
+    RobotPolicySnapshot,
     RobotStateSnapshot,
     RobotTaskRequestCreate,
     RobotTaskStatus,
     utc_now,
+)
+from arvuno_core.robots.profiles import (
+    RobotProfile,
+    get_robot_profile,
+    infer_robot_profile,
 )
 
 
@@ -55,6 +71,14 @@ class RobotRepository:
                     created_at=utc_now(),
                 )
                 self._session.add(robot)
+            profile_name = infer_robot_profile(
+                profile=definition.profile or getattr(robot, "profile", None),
+                adapter_id=definition.adapter_id,
+                model=definition.model,
+            )
+            robot.profile = profile_name.value
+            profile = get_robot_profile(profile_name)
+            governance = {item.capability: item for item in robot.capability_governance}
             robot.name = definition.name
             robot.vendor = definition.vendor
             robot.model = definition.model
@@ -65,7 +89,7 @@ class RobotRepository:
             robot.metadata_summary = definition.metadata
             normalized_snapshot = snapshot.model_copy(update={"robot_id": robot.id})
             record = self._apply_state(robot, normalized_snapshot)
-            self._replace_capabilities(robot, capabilities)
+            self._replace_capabilities(robot, capabilities, profile, governance)
             self._session.add(record)
             self._session.flush()
             return _robot(robot)
@@ -109,12 +133,175 @@ class RobotRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to update robot enablement.") from exc
 
+    def set_capability_governance(
+        self,
+        robot_id: str,
+        capability: RobotCapabilityName,
+        *,
+        enabled: bool | None = None,
+        approved: bool | None = None,
+        consent_granted: bool | None = None,
+        approved_by: str | None = None,
+    ) -> RobotCapability:
+        try:
+            robot = self._require(robot_id)
+            profile = get_robot_profile(robot.profile)
+            policy = profile.policy(capability)
+            if policy is None or not profile.supports(capability):
+                raise RobotCapabilityGovernanceError(
+                    f"The {robot.profile} profile does not support {capability.value}."
+                )
+            if not profile.governance_enabled:
+                raise RobotCapabilityGovernanceError(
+                    f"The {robot.profile} profile is not approved for execution governance."
+                )
+            record = next(
+                (
+                    item
+                    for item in robot.capability_governance
+                    if item.capability == capability.value
+                ),
+                None,
+            )
+            if record is None:
+                record = RobotCapabilityGovernanceRecord(
+                    id=str(uuid4()),
+                    robot_id=robot.id,
+                    capability=capability.value,
+                )
+                self._session.add(record)
+                robot.capability_governance.append(record)
+            if enabled is not None:
+                record.enabled = enabled
+            if approved is not None:
+                record.approved = approved
+                record.approved_by = approved_by if approved else None
+                record.approved_at = utc_now() if approved else None
+            if consent_granted is not None:
+                record.consent_granted = consent_granted
+            record.updated_at = utc_now()
+            self._session.flush()
+            capability_record = next(
+                item for item in robot.capabilities if item.capability == capability.value
+            )
+            return _capability(capability_record, record, profile)
+        except RobotCapabilityGovernanceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to update robot capability governance.") from exc
+
     def capabilities(self, robot_id: str) -> list[RobotCapability]:
         try:
             robot = self._require(robot_id)
-            return [_capability(item) for item in robot.capabilities]
+            profile = get_robot_profile(robot.profile)
+            governance = {item.capability: item for item in robot.capability_governance}
+            return [
+                _capability(item, governance.get(item.capability), profile)
+                for item in robot.capabilities
+            ]
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read robot capabilities.") from exc
+
+    def policy_snapshot(self, robot_id: str) -> RobotPolicySnapshot | None:
+        try:
+            robot = self._require(robot_id)
+            profile = get_robot_profile(robot.profile)
+            governance = {item.capability: item for item in robot.capability_governance}
+            return RobotPolicySnapshot(
+                robot=_robot(robot),
+                capabilities=tuple(
+                    _capability(item, governance.get(item.capability), profile)
+                    for item in robot.capabilities
+                ),
+                consents=tuple(_consent(item) for item in robot.consents),
+            )
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read robot policy facts.") from exc
+
+    def create_consent(
+        self,
+        robot_id: str,
+        grant: RobotConsentGrant,
+    ) -> RobotConsent:
+        try:
+            robot = self._require(robot_id)
+            profile = get_robot_profile(robot.profile)
+            policy = profile.policy(grant.capability)
+            if policy is None or not profile.supports(grant.capability):
+                raise RobotCapabilityGovernanceError(
+                    f"The {robot.profile} profile does not support {grant.capability.value}."
+                )
+            now = utc_now()
+            record = RobotConsentRecord(
+                id=str(uuid4()),
+                robot_id=robot.id,
+                capability=grant.capability.value,
+                data_category=grant.data_category,
+                space_id=grant.space_id,
+                status=(
+                    "granted" if grant.expires_at is None or grant.expires_at > now else "expired"
+                ),
+                granted_at=now,
+                expires_at=grant.expires_at,
+                revoked_at=None,
+                grant_source=grant.grant_source,
+                granted_by=grant.granted_by,
+            )
+            self._session.add(record)
+            self._session.flush()
+            return _consent(record)
+        except RobotCapabilityGovernanceError:
+            raise
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to save robot consent.") from exc
+
+    def revoke_consent(
+        self,
+        robot_id: str,
+        consent_id: str,
+        *,
+        revoked_by: str,
+    ) -> RobotConsent:
+        del revoked_by
+        try:
+            self._require(robot_id)
+            record = self._session.get(RobotConsentRecord, consent_id)
+            if record is None or record.robot_id != robot_id:
+                raise RobotConsentNotFoundError()
+            record.status = "revoked"
+            record.revoked_at = utc_now()
+            record.updated_at = utc_now()
+            self._session.flush()
+            return _consent(record)
+        except RobotConsentNotFoundError:
+            raise
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to revoke robot consent.") from exc
+
+    def list_consents(
+        self,
+        robot_id: str,
+        *,
+        capability: RobotCapabilityName | None = None,
+        active_only: bool = False,
+    ) -> list[RobotConsent]:
+        try:
+            self._require(robot_id)
+            statement = (
+                select(RobotConsentRecord)
+                .where(RobotConsentRecord.robot_id == robot_id)
+                .order_by(RobotConsentRecord.granted_at.desc(), RobotConsentRecord.id)
+            )
+            if capability is not None:
+                statement = statement.where(RobotConsentRecord.capability == capability.value)
+            if active_only:
+                statement = statement.where(
+                    RobotConsentRecord.status == "granted",
+                    RobotConsentRecord.revoked_at.is_(None),
+                )
+            return [_consent(item) for item in self._session.scalars(statement)]
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to list robot consents.") from exc
 
     def add_state(self, snapshot: RobotStateSnapshot) -> RobotStateSnapshot:
         try:
@@ -216,13 +403,20 @@ class RobotRepository:
         request: RobotTaskRequestCreate,
         *,
         capability: RobotCapability,
+        task_step_id: str | None = None,
+        tool_execution_id: str | None = None,
     ) -> RegisteredRobotTaskRequest:
         try:
             robot = self._require(robot_id)
             if request.idempotency_key is not None:
                 existing = self.find_task_by_idempotency(robot_id, request.idempotency_key)
                 if existing is not None:
-                    return existing
+                    if (
+                        existing.capability is request.capability
+                        and existing.parameters == request.parameters
+                    ):
+                        return existing
+                    raise RobotTaskIdempotencyConflictError()
             now = utc_now()
             awaiting = capability.requires_confirmation and not request.confirmed
             record = RobotTaskRequestRecord(
@@ -238,6 +432,8 @@ class RobotRepository:
                 requested_by=request.requested_by,
                 origin_type=request.origin_type,
                 task_id=request.task_id,
+                task_step_id=task_step_id,
+                tool_execution_id=tool_execution_id,
                 idempotency_key=request.idempotency_key,
                 confirmed_by_user=request.confirmed,
                 requires_confirmation=capability.requires_confirmation,
@@ -290,6 +486,9 @@ class RobotRepository:
         status: RobotTaskStatus,
         result: dict[str, Any] | None = None,
         error: dict[str, Any] | None = None,
+        task_id: str | None = None,
+        task_step_id: str | None = None,
+        tool_execution_id: str | None = None,
         confirmed_by_user: bool | None = None,
         submitted_at: datetime | None = None,
         completed_at: datetime | None = None,
@@ -301,6 +500,12 @@ class RobotRepository:
             record.status = status.value
             record.result = result
             record.error = error
+            if task_id is not None:
+                record.task_id = task_id
+            if task_step_id is not None:
+                record.task_step_id = task_step_id
+            if tool_execution_id is not None:
+                record.tool_execution_id = tool_execution_id
             if confirmed_by_user is not None:
                 record.confirmed_by_user = confirmed_by_user
             if submitted_at is not None:
@@ -364,6 +569,8 @@ class RobotRepository:
         self,
         robot: Robot,
         capabilities: list[RobotCapability],
+        profile: RobotProfile,
+        governance: dict[str, RobotCapabilityGovernanceRecord],
     ) -> None:
         robot.capabilities.clear()
         self._session.flush()
@@ -374,7 +581,7 @@ class RobotRepository:
                     capability=capability.capability.value,
                     schema_version=capability.schema_version,
                     verification_status=capability.verification_status,
-                    runtime_enabled=capability.runtime_enabled,
+                    runtime_enabled=False,
                     risk_level=capability.risk_level,
                     requires_confirmation=capability.requires_confirmation,
                     requires_consents=capability.requires_consents,
@@ -385,6 +592,15 @@ class RobotRepository:
                     evidence=capability.evidence,
                 )
             )
+            capability_name = capability.capability.value
+            if capability_name not in governance:
+                governance_record = RobotCapabilityGovernanceRecord(
+                    id=str(uuid4()),
+                    robot_id=robot.id,
+                    capability=capability_name,
+                )
+                self._session.add(governance_record)
+                governance[capability_name] = governance_record
 
     def _apply_state(
         self,
@@ -399,7 +615,8 @@ class RobotRepository:
         robot.battery_percent = snapshot.battery_percent
         robot.device_states = snapshot.device_states.model_dump(mode="json")
         robot.location = snapshot.location.model_dump(mode="json")
-        robot.last_seen_at = snapshot.observed_at if snapshot.is_online else None
+        if snapshot.is_online:
+            robot.last_seen_at = snapshot.observed_at
         robot.updated_at = utc_now()
         return RobotStateSnapshotRecord(
             id=snapshot.id,
@@ -430,6 +647,7 @@ def _robot(robot: Robot) -> RegisteredRobot:
         hardware_version=robot.hardware_version,
         firmware_version=robot.firmware_version,
         edge_runtime_version=robot.edge_runtime_version,
+        profile=robot.profile,
         is_enabled=robot.is_enabled,
         space_id=robot.space_id,
         metadata=robot.metadata_summary,
@@ -448,13 +666,36 @@ def _robot(robot: Robot) -> RegisteredRobot:
     )
 
 
-def _capability(record: RobotCapabilityRecord) -> RobotCapability:
+def _capability(
+    record: RobotCapabilityRecord,
+    governance: RobotCapabilityGovernanceRecord | None,
+    profile: RobotProfile,
+) -> RobotCapability:
+    capability = RobotCapabilityName(record.capability)
+    supported = profile.supports(capability)
+    enabled = governance.enabled if governance is not None else False
+    approved = governance.approved if governance is not None else False
+    consent_granted = governance.consent_granted if governance is not None else False
+    verified = record.verification_status in {
+        "bench_verified",
+        "integration_verified",
+        "safety_approved",
+    }
+    # Consent is runtime policy, not a capability projection. SafetyPolicy checks
+    # active, capability- and space-specific consents immediately before execution.
+    executable = supported and verified and enabled and approved
     return RobotCapability(
         robot_id=record.robot_id,
-        capability=RobotCapabilityName(record.capability),
+        capability=capability,
         schema_version=record.schema_version,
         verification_status=record.verification_status,  # type: ignore[arg-type]
-        runtime_enabled=record.runtime_enabled,
+        discovered=True,
+        supported=supported,
+        enabled=enabled,
+        approved=approved,
+        consent_granted=consent_granted,
+        executable=executable,
+        runtime_enabled=executable,
         risk_level=record.risk_level,  # type: ignore[arg-type]
         requires_confirmation=record.requires_confirmation,
         requires_consents=record.requires_consents,  # type: ignore[arg-type]
@@ -476,6 +717,8 @@ def _task(record: RobotTaskRequestRecord) -> RegisteredRobotTaskRequest:
         requested_by=record.requested_by,
         origin_type=record.origin_type,
         task_id=record.task_id,
+        task_step_id=record.task_step_id,
+        tool_execution_id=record.tool_execution_id,
         idempotency_key=record.idempotency_key,
         confirmed_by_user=record.confirmed_by_user,
         requires_confirmation=record.requires_confirmation,
@@ -504,6 +747,22 @@ def _event(record: RobotEventRecord) -> RobotEvent:
         processed_at=record.processed_at,
         late_arrival=record.late_arrival,
         correlation_id=record.correlation_id,
+    )
+
+
+def _consent(record: RobotConsentRecord) -> RobotConsent:
+    return RobotConsent(
+        id=record.id,
+        robot_id=record.robot_id,
+        capability=RobotCapabilityName(record.capability),
+        data_category=record.data_category,  # type: ignore[arg-type]
+        space_id=record.space_id,
+        status=record.status,  # type: ignore[arg-type]
+        granted_at=record.granted_at,
+        expires_at=record.expires_at,
+        revoked_at=record.revoked_at,
+        grant_source=record.grant_source,
+        granted_by=record.granted_by,
     )
 
 

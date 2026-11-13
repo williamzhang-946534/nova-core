@@ -630,10 +630,11 @@ def test_chat_api_surfaces_confirmation_and_resumes_through_tool_executor(
         assert confirmed_data["status"] == "completed"
         assert confirmed_data["steps"][0]["output"]["actual_state"] == "on"
         assert confirmed_data["steps"][0]["output"]["verified"] is True
-        assert [execution["status"] for execution in confirmed_data["executions"]] == [
-            "confirmation_required",
-            "completed",
-        ]
+        assert len(confirmed_data["executions"]) == 1
+        assert (
+            confirmed_data["executions"][0]["id"] == (waiting_data["confirmation"]["execution_id"])
+        )
+        assert confirmed_data["executions"][0]["status"] == "completed"
         assert set(query_events(manager, "correlation-chat-confirmation")) >= {
             "task_started",
             "user_confirmed",

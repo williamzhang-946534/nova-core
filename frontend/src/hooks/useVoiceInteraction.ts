@@ -26,6 +26,21 @@ export interface VoiceInteractionConfig {
   require_wake_word?: boolean;
 }
 
+export async function playTtsAudio(assetId: string | null): Promise<void> {
+  if (!assetId) return;
+  const audioUrl = URL.createObjectURL(await getTtsAudio(assetId));
+  const audio = new Audio(audioUrl);
+  try {
+    await new Promise<void>((resolve) => {
+      audio.onended = () => resolve();
+      audio.onerror = () => resolve();
+      void audio.play().catch(() => resolve());
+    });
+  } finally {
+    URL.revokeObjectURL(audioUrl);
+  }
+}
+
 interface VoiceInteractionEvents {
   onUserMessage: (content: string) => void;
   onAssistantMessage: (content: string, result?: VoiceInteractionResult) => void;
@@ -61,12 +76,7 @@ export function useVoiceInteraction(
     if (!assetId) return;
     setStage("speaking");
     try {
-      const audio = new Audio(URL.createObjectURL(await getTtsAudio(assetId)));
-      await new Promise<void>((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
-        void audio.play().catch(() => resolve());
-      });
+      await playTtsAudio(assetId);
     } catch {
       setError("语音播报不可用，文字回答已保留。");
     } finally {
@@ -126,16 +136,17 @@ export function useVoiceInteraction(
     onRecordingComplete: (audio, durationMs) => {
       void submitAudio(audio, durationMs);
     },
-    onError: setError,
+    onError: (message) => {
+      setError(message);
+      setStage("idle");
+    },
   });
 
   const startListening = useCallback(() => {
     if (stage !== "idle" || !canProcess) return;
     setError(null);
     setStage("listening");
-    void recorder.start().then(() => {
-      setStage(recorder.recording ? "listening" : "idle");
-    });
+    void recorder.start();
   }, [canProcess, recorder, stage]);
 
   const stopListening = useCallback(() => {

@@ -16,6 +16,9 @@ class ArvunoEventType(StrEnum):
     TASK_FAILED = "task_failed"
     TOOL_EXECUTED = "tool_executed"
     USER_CONFIRMED = "user_confirmed"
+    ROBOT_STATE_CHANGED = "robot_state_changed"
+    ROBOT_SAFETY_CHANGED = "robot_safety_changed"
+    ROBOT_TASK_UPDATED = "robot_task_updated"
 
 
 class ArvunoEventSource(StrEnum):
@@ -27,6 +30,7 @@ class ArvunoEventSource(StrEnum):
     AUTOMATION = "automation"
     API = "api"
     SYSTEM = "system"
+    ROBOT = "robot"
 
 
 SensorType = Literal["temperature", "humidity", "motion", "contact"]
@@ -62,6 +66,8 @@ class DeviceUnavailablePayload(BaseModel):
     device_id: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=1, max_length=500)
     observed_state: str = Field(min_length=1, max_length=100)
+    error_code: str | None = Field(default=None, max_length=100)
+    failure_scope: str | None = Field(default=None, max_length=20)
 
 
 class AutomationTriggeredPayload(BaseModel):
@@ -115,6 +121,39 @@ class UserConfirmedPayload(BaseModel):
     confirmation_token_hash: str = Field(min_length=1, max_length=255)
 
 
+class RobotStateChangedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=255)
+    previous_state: str = Field(min_length=1, max_length=100)
+    current_state: str = Field(min_length=1, max_length=100)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+class RobotSafetyChangedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=255)
+    previous_safety_state: str = Field(min_length=1, max_length=100)
+    current_safety_state: str = Field(min_length=1, max_length=100)
+    emergency_stop: bool
+    manual_takeover: bool
+
+
+class RobotTaskUpdatedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=255)
+    task_request_id: str = Field(min_length=1, max_length=255)
+    capability: str = Field(min_length=1, max_length=100)
+    task_status: str = Field(min_length=1, max_length=100)
+    task_id: str | None = Field(default=None, min_length=1, max_length=36)
+    task_step_id: str | None = Field(default=None, min_length=1, max_length=36)
+    tool_execution_id: str | None = Field(default=None, min_length=1, max_length=36)
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=100)
+    error_code: str | None = Field(default=None, min_length=1, max_length=100)
+
+
 EventPayload = (
     DeviceStateChangedPayload
     | SensorUpdatedPayload
@@ -125,6 +164,9 @@ EventPayload = (
     | TaskFailedPayload
     | ToolExecutedPayload
     | UserConfirmedPayload
+    | RobotStateChangedPayload
+    | RobotSafetyChangedPayload
+    | RobotTaskUpdatedPayload
 )
 
 _PAYLOAD_TYPES: dict[ArvunoEventType, type[EventPayload]] = {
@@ -137,6 +179,9 @@ _PAYLOAD_TYPES: dict[ArvunoEventType, type[EventPayload]] = {
     ArvunoEventType.TASK_FAILED: TaskFailedPayload,
     ArvunoEventType.TOOL_EXECUTED: ToolExecutedPayload,
     ArvunoEventType.USER_CONFIRMED: UserConfirmedPayload,
+    ArvunoEventType.ROBOT_STATE_CHANGED: RobotStateChangedPayload,
+    ArvunoEventType.ROBOT_SAFETY_CHANGED: RobotSafetyChangedPayload,
+    ArvunoEventType.ROBOT_TASK_UPDATED: RobotTaskUpdatedPayload,
 }
 
 UuidString = Annotated[str, Field(min_length=36, max_length=36)]
@@ -186,4 +231,17 @@ class ArvunoEvent(BaseModel):
                 raise ValueError("Device events require subject_id")
             if self.payload.device_id != self.subject_id:
                 raise ValueError("payload.device_id must match subject_id")
+
+        robot_event_types = {
+            ArvunoEventType.ROBOT_STATE_CHANGED,
+            ArvunoEventType.ROBOT_SAFETY_CHANGED,
+            ArvunoEventType.ROBOT_TASK_UPDATED,
+        }
+        if self.event_type in robot_event_types:
+            if self.subject_type != "robot":
+                raise ValueError("Robot events must use subject_type='robot'")
+            if self.subject_id is None:
+                raise ValueError("Robot events require subject_id")
+            if self.payload.robot_id != self.subject_id:
+                raise ValueError("payload.robot_id must match subject_id")
         return self

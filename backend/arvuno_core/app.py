@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -43,6 +44,7 @@ from arvuno_core.api.perception import router as perception_router
 from arvuno_core.api.planning import router as planning_router
 from arvuno_core.api.proactive import router as proactive_router
 from arvuno_core.api.reasoning import router as reasoning_router
+from arvuno_core.api.retention import router as retention_router
 from arvuno_core.api.robot_perception import router as robot_perception_router
 from arvuno_core.api.robots import router as robots_router
 from arvuno_core.api.settings import router as settings_router
@@ -90,6 +92,7 @@ from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from arvuno_core.planning.service import PlanningService
 from arvuno_core.proactive.service import ProactiveService
 from arvuno_core.reasoning.service import ReasoningService
+from arvuno_core.retention.service import build_retention_scheduler
 from arvuno_core.robots.mock import MockRobotAdapter
 from arvuno_core.robots.registry import RobotRegistry
 from arvuno_core.robots.service import RobotApplicationService
@@ -191,9 +194,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         environment_context = app.state.environment_context
         await environment_context.initialize()
         await environment_context.synchronize_with_registry()
+    try:
+        recovery = await app.state.task_service.recover_tasks()
+        logger.info(
+            "task_startup_recovery_completed",
+            extra={
+                "payload": {
+                    "resumed": len(recovery.resumed_task_ids),
+                    "waiting_cancelled": len(recovery.waiting_cancelled_task_ids),
+                    "unknown": len(recovery.unknown_task_ids),
+                    "expired": len(recovery.timed_out_task_ids),
+                }
+            },
+        )
+    except Exception:
+        logger.exception("task_startup_recovery_failed")
+    try:
+        await app.state.automation_service.recover_interrupted_runs()
+    except Exception:
+        logger.exception("automation_startup_recovery_failed")
     if getattr(app.state, "initialize_tool_runtime", False):
         await app.state.multimodal_service.initialize_catalog()
+    retention_scheduler = getattr(app.state, "retention_scheduler", None)
+    if retention_scheduler is not None and app.state.settings.retention_scheduler_enabled:
+        retention_scheduler.start()
+        logger.info("retention_scheduler_started")
     yield
+    try:
+        async with asyncio.timeout(app.state.settings.event_subscriber_timeout_seconds):
+            await app.state.automation_service.wait_for_background_work()
+    except TimeoutError:
+        logger.warning("automation_background_work_cancelled_at_shutdown")
+    retention_scheduler = getattr(app.state, "retention_scheduler", None)
+    if retention_scheduler is not None:
+        await retention_scheduler.stop()
     runtime = getattr(app.state, "device_polling_runtime", None)
     if runtime is not None:
         await runtime.stop()
@@ -237,7 +271,10 @@ def create_app(
     app.state.settings = app_settings
     app.state.unit_of_work_factory = unit_of_work_factory
     app.state.database_manager = database_manager
-    event_bus = EventBus(unit_of_work_factory)
+    event_bus = EventBus(
+        unit_of_work_factory,
+        subscriber_timeout_seconds=app_settings.event_subscriber_timeout_seconds,
+    )
     app.state.event_bus = event_bus
     mock_adapter = MockDeviceAdapter()
     device_registry = DeviceRegistry(unit_of_work_factory)
@@ -456,18 +493,29 @@ def create_app(
             )
         return result
 
+    mock_robot_adapter = MockRobotAdapter(profile=app_settings.robot_profile)
+    robot_registry = RobotRegistry(unit_of_work_factory)
+    robot_service = RobotApplicationService(
+        robot_registry,
+        {mock_robot_adapter.adapter_id: mock_robot_adapter},
+        unit_of_work_factory=unit_of_work_factory,
+        event_publisher=event_bus,
+        heartbeat_timeout_seconds=app_settings.robot_heartbeat_timeout_seconds,
+    )
     tool_registry = build_default_tool_registry(
         device_service,
         environment_query_provider=environment_query_service.query,
         environment_state_sink=environment_context,
         memory_retrieval_provider=retrieve_memory,
         history_query_provider=query_history,
+        robot_service=robot_service,
     )
     tool_executor = ToolExecutor(
         registry=tool_registry,
         safety_policy=SafetyPolicy(
             device_service,
             tool_permissions=app_settings.tool_permissions,
+            robot_reader=robot_service,
         ),
         confirmation_service=ConfirmationService(
             ttl_seconds=app_settings.tool_confirmation_ttl_seconds,
@@ -494,8 +542,9 @@ def create_app(
         app.state.task_service,
         event_bus,
     )
+    app.state.task_service.lifecycle_observer = automation_service
     event_bus.subscribe(
-        automation_service.handle_event,
+        automation_service.handle_event_scheduled,
         event_types={
             ArvunoEventType.DEVICE_STATE_CHANGED.value,
             ArvunoEventType.SENSOR_UPDATED.value,
@@ -530,13 +579,9 @@ def create_app(
         environment_name=app_settings.default_environment_name,
     )
     app.state.perception_observer = None
-    app.state.mock_robot_adapter = MockRobotAdapter()
-    app.state.robot_registry = RobotRegistry(unit_of_work_factory)
-    app.state.robot_service = RobotApplicationService(
-        app.state.robot_registry,
-        {adapter.adapter_id: adapter for adapter in (app.state.mock_robot_adapter,)},
-        unit_of_work_factory=unit_of_work_factory,
-    )
+    app.state.mock_robot_adapter = mock_robot_adapter
+    app.state.robot_registry = robot_registry
+    app.state.robot_service = robot_service
     app.state.robot_mobile_perception_service = RobotMobilePerceptionService(
         app.state.perception_service,
         app.state.robot_service,
@@ -554,6 +599,14 @@ def create_app(
     )
     app.state.initialize_tool_runtime = initialize_tool_runtime
     provider_log_store = SqlProviderLogStore(unit_of_work_factory)
+    app.state.retention_scheduler = build_retention_scheduler(
+        settings=app_settings,
+        unit_of_work_factory=unit_of_work_factory,
+        observation_pipeline=observation_pipeline,
+        multimodal_service=app.state.multimodal_service,
+        proactive_service=app.state.proactive_service,
+        provider_log_store=provider_log_store,
+    )
     if ai_provider is None:
         if app_settings.ai_provider == "openai_compatible":
             ai_provider = OpenAICompatibleProvider(
@@ -565,11 +618,17 @@ def create_app(
                     max_retries=app_settings.ai_max_retries,
                     structured_output_mode=app_settings.ai_structured_output_mode,
                     retry_backoff_seconds=app_settings.ai_retry_backoff_seconds,
+                    debug_logging=app_settings.ai_provider_debug_logging,
+                    debug_logging_ttl_seconds=app_settings.ai_provider_debug_logging_ttl_seconds,
                 ),
                 provider_log_store,
             )
         else:
-            ai_provider = MockAIProvider(provider_log_store)
+            ai_provider = MockAIProvider(
+                provider_log_store,
+                debug_logging=app_settings.ai_provider_debug_logging,
+                debug_logging_ttl_seconds=app_settings.ai_provider_debug_logging_ttl_seconds,
+            )
     else:
         ai_provider = ai_provider
 
@@ -640,6 +699,7 @@ def create_app(
     app.include_router(reasoning_router)
     app.include_router(robots_router)
     app.include_router(robot_perception_router)
+    app.include_router(retention_router)
     app.include_router(planning_router)
     app.include_router(proactive_router)
     app.include_router(perception_router)

@@ -2,7 +2,7 @@
 
 Arvuno Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智能控制系统。它通过 Home Assistant 等设备适配层获取现实环境信息，建立自己的环境上下文与事件记录，由 AI Agent 理解用户目标、生成任务计划，并通过受控工具调用低风险设备，最后验证执行结果并留下完整记录。
 
-当前项目处于 **Phase 10 / 第一阶段验收已完成** 状态：真实 DeepSeek 冒烟、真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页复核和移动端宽度检查均已通过，详见 [Phase 10 验收报告](docs/16-phase10-acceptance-report.md)。项目包含前后端基础骨架、健康检查、SQLite 数据模型、Alembic 迁移、Repository 边界、备份恢复、统一设备接口、Home Assistant Adapter、Mock Device Adapter、轻量 Device Registry、状态轮询、标准化 Event Schema、进程内 Event Bus、事件持久化、事件查询 API、Environment Context、Tool Registry、Safety Policy、用户确认、Tool Executor、执行审计、状态验证、Task/TaskStep 状态机、显式任务计划执行、任务历史、任务事件、correlation ID 追踪、统一 AI Provider Interface、OpenAI-compatible Provider、Mock AI Provider、结构化候选输出校验、模型调用日志、`/api/chat` 自然语言入口、Web 控制台核心页面、少量 Arvuno 上下文自动化规则和 Web Console 站内通知；尚未验收实体硬件，也未实现 Memory、会话持久化、Agent 自主规划、通用自动化编辑器或多渠道通知。
+当前项目处于 **Phase 10 历史验收已完成、REPAIR-01 维护修复待用户复核** 状态。Phase 10 的真实 DeepSeek 冒烟、真实 Home Assistant demo 读/写链路、断线/重连、Web Console 逐页复核和移动端检查保留为历史结果，详见 [Phase 10 验收报告](docs/16-phase10-acceptance-report.md)。当前代码还包含 Memory、状态估计与历史查询、多模态按需处理、统一数据保留调度、设备可用性状态转换、带订阅者隔离的 Event Bus、任务恢复、最小化 Provider Log、Robot Profile 与能力治理、Mock 桌面机器人安全链路、机器人管理页，以及多模态媒体备份/恢复清单。真实机器人物理执行和 `mobile_robot` 仍被锁定；ARS-02 至 ARS-06 均未关闭。
 
 ## 开发环境与常用命令
 
@@ -18,13 +18,15 @@ Arvuno Core 是一个运行在个人 Windows 电脑上的 AI 环境感知与智�
 ```powershell
 cd E:\williamzhang\zzh\zzh-personal-project\nova
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -r backend\requirements-dev.txt
+.\.venv\Scripts\python -m pip install -r backend\requirements-dev.lock
 
 cd frontend
-npm install
+pnpm install --frozen-lockfile
 ```
 
-如使用 `pnpm`，将前端安装命令替换为 `pnpm install`。
+前端依赖由 `pnpm-lock.yaml` 锁定。
+
+后端 `requirements*.txt` 保持范围约束，`requirements.lock` 与 `requirements-dev.lock` 是从已验证测试环境导出的精确版本锁定文件。日常安装使用 lock；升级依赖时先修改范围文件，再在干净环境中生成并验证新的 lock。
 
 ### 启动
 
@@ -73,14 +75,21 @@ $env:PYTHONPATH = "backend"
 
 ```powershell
 cd E:\williamzhang\zzh\zzh-personal-project\nova
-.\.venv\Scripts\python -m pytest backend\tests
-.\.venv\Scripts\python -m ruff format --check backend
-.\.venv\Scripts\python -m ruff check backend
+.\scripts\check.ps1
+
+该脚本依次执行后端 Ruff lint/format、pytest、compileall、pip check，以及前端 typecheck、Prettier、测试和 production build。也可以单独执行：
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m pytest
+..\.venv\Scripts\python.exe -m ruff check .
+..\.venv\Scripts\python.exe -m ruff format --check .
 
 cd frontend
-npm run typecheck
-npm run build
-npm run format:check
+pnpm typecheck
+pnpm build
+pnpm format:check
+pnpm test
 ```
 真实环境变量从根目录 `.env` 读取；可从 `.env.example` 复制后修改，不要提交 `.env`。
 
@@ -137,7 +146,7 @@ Phase 6 提供显式计划的最小任务系统。`POST /api/tasks` 创建并按
 - `POST /api/tasks/{task_id}/confirm`：确认或拒绝等待确认的任务步骤。
 - `POST /api/tasks/{task_id}/cancel`：取消未完成任务及其未完成步骤。
 
-需要确认时，创建响应会返回一次性 `confirmation_token`，任务进入 `waiting_confirmation`；确认 Token 只在本次响应中出现，计划中保存 SHA-256 摘要，重复确认按已使用 Token 幂等处理。任务执行失败会将当前步骤标记为 `failed` 并取消后续步骤；执行超时将任务标记为 `failed`、步骤标记为 `timed_out`；等待确认超时或用户拒绝会将任务和步骤标记为 `cancelled`。
+需要确认时，创建响应会返回一次性 `confirmation_token`，任务进入 `waiting_confirmation`；确认 Token 只在本次响应中出现，计划中保存 SHA-256 摘要，重复确认按已使用 Token 幂等处理。任务执行失败会将当前步骤标记为 `failed` 并取消后续步骤；执行超时或重启时无法确认外部结果，会将任务标记为 `needs_verification`、步骤标记为 `timed_out`；等待确认超时或用户拒绝会将任务和步骤标记为 `cancelled`。
 
 ### AI Provider 与 Agent Runtime
 
@@ -154,7 +163,11 @@ ARVUNO_AI_STRUCTURED_OUTPUT_MODE=json_schema
 ARVUNO_AI_RETRY_BACKOFF_SECONDS=0.2
 ```
 
-OpenAI-compatible Provider 支持 Base URL、模型名称、API Key、超时、有限重试和 `json_schema`、`json_object`、`prompt_only` 三种结构化输出模式；收到 400/422 时会按顺序降级。Provider 日志只保存脱敏摘要和 Token 用量，API Key 只能来自 `.env` 或受保护环境变量。真实模型调用是可选手工验证，自动化测试不依赖网络。
+OpenAI-compatible Provider 支持 Base URL、模型名称、API Key、超时、有限重试和 `json_schema`、`json_object`、`prompt_only` 三种结构化输出模式；收到 400/422 时会按顺序降级。Provider 日志默认只保存 Schema v2 运行元数据：请求/关联 ID、消息数量、角色分布、Token 用量、耗时、状态、错误码和创建时间；不保存完整 messages、system prompt、模型响应或凭据。显式 debug 捕获默认关闭、只允许 development，保存前做敏感值脱敏，TTL 为 60–3600 秒，读取过期日志时会先移除 debug 内容。真实模型调用是可选手工验证，自动化测试不依赖网络。
+
+### 机器人安全边界
+
+当前硬件目标是 `desktop_robot` Mock Profile，能力只包含 `report_status`、`look_at`、`observe_scene`、`request_safe_stop`、`enter_idle_pose`、`speak` 和 `listen`；全部动作默认禁用、需治理启用、Consent 和确认。Robot API 保留只读状态/能力/任务/事件查询、心跳、重连和授权治理，直接创建/确认/取消机器人任务的旧 API 会返回 `robot_execution_locked`。Agent 动作只能通过 `robot_*` 工具进入 Task System、Safety Policy 和 Tool Executor；`mobile_robot` 仅保留未来接口且治理锁定，真实硬件没有安全审批，不代表已验收。
 
 `POST /api/chat` 接收自然语言消息并返回意图、回复、任务 ID、确认信息、Provider 日志 ID、correlation ID 和错误摘要。Agent Runtime 只把模型输出当作待验证候选：先做 Pydantic 结构化校验、意图与工具匹配、Tool Catalog 参数校验和风险检查，再通过 Task System 创建任务。执行链路仍为 `Agent Runtime -> TaskService -> TaskStep -> ToolExecutor -> SafetyPolicy -> DeviceApplicationService`；模型不能直接执行设备操作，也不能绕过确认机制。本阶段不保存对话和 Memory，不做自主多轮规划。
 

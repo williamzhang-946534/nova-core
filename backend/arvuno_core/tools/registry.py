@@ -13,6 +13,7 @@ from arvuno_core.environment.query_models import (
     EnvironmentStateQueryInput,
 )
 from arvuno_core.memory.models import MemoryRetrievalResult
+from arvuno_core.robots.service import RobotApplicationService
 from arvuno_core.tools.models import (
     ControlDeviceInput,
     ControlDeviceOutput,
@@ -100,6 +101,7 @@ def build_default_tool_registry(
     | None = None,
     history_query_provider: Callable[[HistoryQueryInput], Awaitable[HistoryQueryOutput]]
     | None = None,
+    robot_service: RobotApplicationService | None = None,
 ) -> ToolRegistry:
     async def list_devices(
         _context: ToolExecutionContext,
@@ -306,4 +308,8 @@ def build_default_tool_registry(
             handler=control_device,
         )
     )
+    if robot_service is not None:
+        from arvuno_core.tools.robot import register_robot_tools
+
+        register_robot_tools(registry, robot_service)
     return registry

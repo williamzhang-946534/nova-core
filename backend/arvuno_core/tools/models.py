@@ -44,6 +44,7 @@ class PermissionResult(StrEnum):
     DEVICE_DISABLED = "device_disabled"
     ACTION_NOT_ALLOWED = "action_not_allowed"
     DEVICE_UNAVAILABLE = "device_unavailable"
+    CONSENT_REQUIRED = "consent_required"
 
 
 class ToolErrorCode(StrEnum):
@@ -65,6 +66,8 @@ class ToolExecutionContext:
     correlation_id: str
     task_id: str | None = None
     task_step_id: str | None = None
+    tool_execution_id: str | None = None
+    task_system: bool = False
 
 
 class ListDevicesInput(BaseModel):
@@ -287,3 +290,88 @@ class HistoryQueryOutput(BaseModel):
     snapshot_diff: SnapshotDiffResult | None = None
     correlation: CorrelatedHistory | None = None
     natural_history: NaturalHistoryAnswer | None = None
+
+
+class RobotStatusInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=36)
+
+
+class RobotCapabilitiesInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=36)
+
+
+class RobotConsentsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=36)
+    capability: str | None = Field(default=None, min_length=1, max_length=100)
+    active_only: bool = False
+
+
+class RobotTaskHistoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=36)
+    limit: int = Field(default=20, ge=1, le=200)
+
+
+class RobotActionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str = Field(min_length=1, max_length=36)
+    space_id: str = Field(min_length=1, max_length=36)
+    text: str | None = Field(default=None, min_length=1, max_length=1000)
+    target: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_action_data(self) -> "RobotActionInput":
+        if self.target is not None and not self.target:
+            raise ValueError("target must contain action data")
+        return self
+
+
+class RobotStatusOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str
+    state: dict[str, Any]
+
+
+class RobotCapabilitiesOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str
+    capabilities: list[dict[str, Any]]
+
+
+class RobotConsentsOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str
+    consents: list[dict[str, Any]]
+
+
+class RobotTaskHistoryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str
+    requests: list[dict[str, Any]]
+
+
+class RobotActionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    robot_id: str
+    request_id: str
+    capability: str
+    status: str
+    result: dict[str, Any]
+    verified: bool
+    tool_execution_id: str
+    task_id: str | None = None
+    task_step_id: str | None = None
+    correlation_id: str | None = None

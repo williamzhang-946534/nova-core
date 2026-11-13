@@ -336,8 +336,17 @@ class MultimodalService:
             )
         return await asyncio.to_thread(self._synthesize_sync, request, adapter)
 
-    async def purge_expired(self, now: datetime | None = None) -> int:
-        return await asyncio.to_thread(self._purge_expired_sync, now or datetime.now(UTC))
+    async def purge_expired(
+        self,
+        now: datetime | None = None,
+        *,
+        limit: int | None = None,
+    ) -> int:
+        return await asyncio.to_thread(
+            self._purge_expired_sync,
+            now or datetime.now(UTC),
+            limit,
+        )
 
     async def list_extractions(self) -> list[MultimodalExtractionView]:
         return await asyncio.to_thread(self._list_extractions)
@@ -1761,12 +1770,12 @@ class MultimodalService:
                 status_code=502,
             ) from exc
 
-    def _purge_expired_sync(self, now: datetime) -> int:
+    def _purge_expired_sync(self, now: datetime, limit: int | None = None) -> int:
         with self._unit_of_work_factory() as uow:
             assert uow.multimodal is not None
             assets = [
                 row
-                for row in uow.multimodal.list_assets_pending_purge()
+                for row in uow.multimodal.list_assets_pending_purge(limit=limit)
                 if _utc(row.retention_until) <= _utc(now)
             ]
             for asset in assets:

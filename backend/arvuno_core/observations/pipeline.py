@@ -132,7 +132,13 @@ class ObservationPipeline:
             )
         )
 
-    async def cleanup_expired(self, *, now: datetime, limit: int = 1000) -> int:
+    async def cleanup_expired(
+        self,
+        *,
+        now: datetime,
+        limit: int = 1000,
+        batch_retention_days: int = 30,
+    ) -> int:
         def execute() -> int:
             deleted_observations = 0
             deleted_batches = 0
@@ -144,7 +150,11 @@ class ObservationPipeline:
                         now=now,
                         limit=limit,
                     )
-                    deleted_batches = uow.observation_batches.cleanup_expired(now=now)
+                    deleted_batches = uow.observation_batches.cleanup_expired(
+                        now=now,
+                        retention_days=batch_retention_days,
+                        limit=limit,
+                    )
                     uow.commit()
                 if limit < 1 or deleted_observations < limit:
                     return deleted_observations + deleted_batches

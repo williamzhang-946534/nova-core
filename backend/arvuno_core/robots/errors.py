@@ -48,6 +48,31 @@ class RobotCapabilityDisabledError(RobotError):
         )
 
 
+class RobotCapabilityGovernanceError(RobotError):
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            code="ROBOT_CAPABILITY_GOVERNANCE_INVALID",
+            message=message,
+            status_code=409,
+        )
+
+
+class RobotExecutionLockedError(RobotError):
+    def __init__(
+        self,
+        message: str = ("Robot execution is locked until the unified safety chain is available."),
+    ) -> None:
+        super().__init__(
+            code="ROBOT_EXECUTION_LOCKED",
+            message=message,
+            status_code=403,
+            details={
+                "required_boundary": "task_system+tool_registry+safety_policy+tool_executor",
+                "temporary_lock": True,
+            },
+        )
+
+
 class RobotInvalidParameterError(RobotError):
     def __init__(self, message: str) -> None:
         super().__init__(
@@ -87,6 +112,35 @@ class RobotTaskNotFoundError(RobotError):
         super().__init__(code="ROBOT_TASK_NOT_FOUND", message=message, status_code=404)
 
 
+class RobotConsentNotFoundError(RobotError):
+    def __init__(self, message: str = "The robot consent was not found.") -> None:
+        super().__init__(code="ROBOT_CONSENT_NOT_FOUND", message=message, status_code=404)
+
+
+class RobotConsentInvalidError(RobotError):
+    def __init__(
+        self,
+        message: str = "Valid robot consent is required before execution.",
+    ) -> None:
+        super().__init__(
+            code="ROBOT_CONSENT_REQUIRED",
+            message=message,
+            status_code=403,
+        )
+
+
 class RobotTaskStateError(RobotError):
     def __init__(self, message: str) -> None:
         super().__init__(code="ROBOT_TASK_STATE", message=message, status_code=409)
+
+
+class RobotTaskIdempotencyConflictError(RobotError):
+    def __init__(
+        self,
+        message: str = "The idempotency key was reused with different task semantics.",
+    ) -> None:
+        super().__init__(
+            code="ROBOT_TASK_IDEMPOTENCY_CONFLICT",
+            message=message,
+            status_code=409,
+        )

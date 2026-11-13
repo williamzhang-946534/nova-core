@@ -166,12 +166,16 @@ class MultimodalRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read a provider invocation.") from exc
 
-    def list_assets_pending_purge(self) -> list[MultimodalMediaAsset]:
+    def list_assets_pending_purge(self, *, limit: int | None = None) -> list[MultimodalMediaAsset]:
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         statement = (
             select(MultimodalMediaAsset)
             .where(MultimodalMediaAsset.purge_status == "pending")
             .order_by(MultimodalMediaAsset.retention_until, MultimodalMediaAsset.id)
         )
+        if limit is not None:
+            statement = statement.limit(limit)
         try:
             return list(self._session.scalars(statement))
         except SQLAlchemyError as exc:

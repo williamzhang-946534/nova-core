@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from arvuno_core.api.security import require_api_token
 from arvuno_core.perception.models import ActivePerceptionRequestData
 from arvuno_core.perception.robot_mobile import RobotMobilePerceptionService
+from arvuno_core.robots.errors import RobotExecutionLockedError
 from arvuno_core.schemas.perception import (
     RobotMobilePerceptionAuthorizeRequest,
     RobotMobilePerceptionEvaluateRequest,
@@ -59,12 +60,9 @@ async def authorize_request(
 @router.post("/requests/{request_id}/execute", response_model=ActivePerceptionRequestData)
 async def execute_request(
     request_id: str,
-    service: Annotated[
-        RobotMobilePerceptionService,
-        Depends(get_robot_mobile_perception_service),
-    ],
 ) -> ActivePerceptionRequestData:
-    return ActivePerceptionRequestData(data=await service.execute(request_id))
+    del request_id
+    raise RobotExecutionLockedError()
 
 
 @router.get("/requests/{request_id}", response_model=ActivePerceptionRequestData)

@@ -124,6 +124,7 @@ class AgentConfirmationSummary(BaseModel):
     tool_name: str
     risk_level: str
     input: dict[str, Any]
+    execution_id: str | None = None
 
 
 class AgentChatResult(BaseModel):

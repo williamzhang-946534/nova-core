@@ -540,9 +540,15 @@ Mock 结果不得标记为真实硬件验收。
 5. ARS-05 媒体、授权、删除和 Provider 链路复用。
 6. Observation 映射和 State Estimation 重建。
 
+2026-11-10 实施状态：当前工程实现的是 `navigate_to` + `observe` 的移动机器人 Mock 观察链路，不是本设计的 `look_at` / `observe_scene` 受限姿态链路。该差异与本文“载体是自制桌面机器人、第一版不做轮式导航”的前提冲突，已记录在 `docs/35-ars06-acceptance-report.md` 第 6 节；ARS-06 关闭前必须确认唯一权威载体和能力清单。
+
+2026-11-12 Profile 冻结状态：生产 Mock 与默认 Profile 已改为 `desktop_robot`，能力目录只包含 `report_status`、`look_at`、`observe_scene`、`request_safe_stop`、`enter_idle_pose`、`speak` 和 `listen`。`mobile_robot` 仅保留未来接口且治理锁定；旧移动 Mock 只能通过显式 `legacy_mock_mobile` 测试配置运行，不作为当前硬件目标。Adapter 能力事实与用户启用、批准、Consent 状态已分离；`executable` 需要全部条件同时满足。统一 Robot Tool Handler、真实硬件验收和实际能力实现仍在后续工作包。
+
 ### ARS-06.4：桌面机器人验收
 
 验证能力证据、状态同步、安全停止、失效安全、隐私授权、媒体删除、时间语义、任务审计、机器人离线时 Core 独立运行，以及 Mock 与真实硬件结果分开记录。
+
+2026-11-10 验收状态：已完成当前 Mock 链路的 ARS-06.4 验收并输出 `docs/35-ars06-acceptance-report.md`，结论为 **Mock 条件通过 / 不关闭**。独立 Adapter、能力注册、定位和状态同步、导航、观察、来源、授权、急停、人工接管、离线恢复和 Core 离线运行已有回归证据；真实硬件、本设计的受限姿态能力、媒体物理删除和桌面安全包络仍未验收，当前 Mock 能力集合与本设计不一致。
 
 ## 13. 设计验收标准
 
@@ -558,3 +564,18 @@ Mock 结果不得标记为真实硬件验收。
 10. 用户确认 Mock 验收不替代真实硬件安全验收。
 
 在上述标准确认前，不得开始 ARS-06.1 工程实现。
+
+## 14. 2026-11-13 REPAIR-01 实施状态（Mock）
+
+本节是后续状态补充，不修改 2026-11-10 / 2026-11-12 的历史结论，也不宣告 ARS-06 关闭。
+
+1. 当前权威载体为第 34 号自制桌面机器人设计；`desktop_robot` Profile 冻结为 `report_status`、`look_at`、`observe_scene`、`request_safe_stop`、`enter_idle_pose`、`speak` 和 `listen`。
+2. `mobile_robot` 能力定义保留为未来接口，包括 `navigate_to`、`return_to_dock` 和 `charge`；在硬件和安全审批前治理锁定。`legacy_mock_mobile` 只用于显式历史测试，不是当前硬件目标。
+3. Robot Tool Handler 已接入 Task System、Tool Registry、Safety Policy、确认检查、Tool Executor、Robot Adapter、状态验证和执行审计；Agent 不能直接调用 `RobotApplicationService`。
+4. Camera、microphone、speaker 和 motion 分别使用 Consent；授权支持能力、数据类别、空间、授予 / 过期 / 撤销信息。执行前强制检查有效授权。
+5. 服务端一次性确认 Token 绑定 robot、request、capability、参数摘要、空间范围和过期时间；`confirmed=true` 不是确认凭据，重放、参数变化和过期确认均拒绝。
+6. 机器人运行状态支持 online、offline、stale、busy、idle、error、emergency_stopped 和 unknown；heartbeat 提供最后活动时间和 freshness，重连接口用于状态重新同步。
+7. 取消失败和结果未知分别保留 `cancel_failed` 与 `execution_state_unknown`；安全停止只表示 Core 请求并监控反馈，不宣称已实测机器人本体急停。
+8. Web Console 提供机器人列表、运行状态、能力治理、Consent 管理、任务历史、事件、安全状态和故障信息；Agent 提供只读状态、能力、任务历史和授权查询工具。
+9. 直接 `POST /api/robots/{robot_id}/enable`、创建 / 确认 / 取消任务请求和移动感知执行入口当前统一返回 `ROBOT_EXECUTION_LOCKED`。
+10. 以上状态全部基于 Windows 本地 Mock 和受控开发验证。真实硬件、固件契约、BOM、安全包络、摄像头 / 麦克风、运动与安全停止均未验收；第 13 节验收标准继续有效。

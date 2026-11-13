@@ -248,6 +248,7 @@ class AgentRuntime:
                         tool_name=waiting_step.tool_name or call.tool.name if call else "",
                         risk_level=call.tool.risk_level if call else "medium_risk",
                         input=waiting_step.input if waiting_step is not None else call.input,
+                        execution_id=task.plan.get("confirmation", {}).get("execution_id"),
                     )
                     if call is not None
                     else None
@@ -263,9 +264,14 @@ class AgentRuntime:
                 None,
             )
             details = failed or error
+            reply = (
+                "任务结果未知，需要重新核对设备状态。"
+                if task.status is TaskStatus.NEEDS_VERIFICATION
+                else _task_failure_reply(task.status.value, details)
+            )
             return AgentChatResult(
                 status="cancelled" if task.status is TaskStatus.CANCELLED else "failed",
-                reply=_task_failure_reply(task.status.value, details),
+                reply=reply,
                 intent=intent,
                 task_id=task.id,
                 provider_log_id=provider_log_id,
@@ -278,6 +284,8 @@ class AgentRuntime:
                             (
                                 "TASK_CANCELLED"
                                 if task.status is TaskStatus.CANCELLED
+                                else "TASK_EXECUTION_UNKNOWN"
+                                if task.status is TaskStatus.NEEDS_VERIFICATION
                                 else "TASK_FAILED"
                             ),
                         )

@@ -100,6 +100,7 @@ class AutomationService:
         self._run_id_factory = run_id_factory
         self._event_id_factory = event_id_factory
         self._locks: dict[str, asyncio.Lock] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     async def create(self, request: AutomationCreate) -> StoredAutomation:
         automation_id = self._automation_id_factory()
@@ -221,6 +222,129 @@ class AutomationService:
         if event.event_type.value not in AUTOMATION_EVENT_TYPES:
             return
 
+        await self._handle_event(event)
+
+    async def handle_event_scheduled(self, event: ArvunoEvent) -> None:
+        if event.event_type.value not in AUTOMATION_EVENT_TYPES:
+            return
+
+        task = asyncio.create_task(self._handle_event(event))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def wait_for_background_work(self) -> None:
+        tasks = list(self._background_tasks)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def recover_interrupted_runs(self) -> None:
+        """Reconcile runs whose process disappeared before task completion."""
+
+        def query() -> list[StoredAutomationRun]:
+            with self._unit_of_work_factory() as unit_of_work:
+                if unit_of_work.automation_runs is None:
+                    raise AutomationStateError("The automation run repository is unavailable.")
+                return unit_of_work.automation_runs.list_by_statuses(
+                    {
+                        AutomationRunStatus.RUNNING,
+                        AutomationRunStatus.WAITING_CONFIRMATION,
+                        AutomationRunStatus.NEEDS_VERIFICATION,
+                    }
+                )
+
+        runs = await self._repository_call(query)
+        for run in runs:
+            task = None
+            if run.task_id is not None:
+
+                def load_task(task_id: str = run.task_id) -> Any:
+                    with self._unit_of_work_factory() as unit_of_work:
+                        if unit_of_work.tasks is None:
+                            raise AutomationStateError("The task repository is unavailable.")
+                        return unit_of_work.tasks.get(task_id)
+
+                task = await self._repository_call(load_task)
+            if task is None:
+                await self._finish_run(
+                    run.id,
+                    AutomationRunStatus.FAILED,
+                    task_id=run.task_id,
+                    error={
+                        "code": "AUTOMATION_TASK_STATE_UNKNOWN",
+                        "message": "The automation task state could not be recovered.",
+                        "details": {"requires_verification": True},
+                    },
+                )
+                continue
+            if task.status is TaskStatus.COMPLETED:
+                status = AutomationRunStatus.COMPLETED
+                error = None
+            elif task.status is TaskStatus.CANCELLED:
+                status = AutomationRunStatus.CANCELLED
+                error = task.error
+            elif task.status is TaskStatus.NEEDS_VERIFICATION:
+                status = AutomationRunStatus.NEEDS_VERIFICATION
+                error = task.error
+            else:
+                status = AutomationRunStatus.FAILED
+                error = task.error or {
+                    "code": "AUTOMATION_TASK_NOT_COMPLETED",
+                    "message": f"The automation task ended as {task.status.value}.",
+                    "details": {"task_status": task.status.value},
+                }
+            await self._finish_run(
+                run.id,
+                status,
+                task_id=task.id,
+                error=error,
+            )
+
+    async def on_task_waiting_confirmation(self, task_id: str) -> None:
+        run = await self._run_for_task(task_id)
+        if run is None:
+            return
+        await self._finish_run(
+            run.id,
+            AutomationRunStatus.WAITING_CONFIRMATION,
+            task_id=task_id,
+            error=None,
+        )
+
+    async def on_task_terminal(
+        self,
+        task_id: str,
+        status: TaskStatus,
+        error: dict[str, Any] | None,
+    ) -> None:
+        if status is TaskStatus.WAITING_CONFIRMATION:
+            await self.on_task_waiting_confirmation(task_id)
+            return
+        run = await self._run_for_task(task_id)
+        if run is None:
+            return
+        if status is TaskStatus.COMPLETED:
+            run_status = AutomationRunStatus.COMPLETED
+        elif status is TaskStatus.CANCELLED:
+            run_status = AutomationRunStatus.CANCELLED
+        elif status is TaskStatus.NEEDS_VERIFICATION:
+            run_status = AutomationRunStatus.NEEDS_VERIFICATION
+        else:
+            run_status = AutomationRunStatus.FAILED
+        await self._finish_run(run.id, run_status, task_id=task_id, error=error)
+
+    async def _run_for_task(self, task_id: str) -> StoredAutomationRun | None:
+        def query() -> StoredAutomationRun | None:
+            with self._unit_of_work_factory() as unit_of_work:
+                if unit_of_work.automation_runs is None:
+                    raise AutomationStateError("The automation run repository is unavailable.")
+                return unit_of_work.automation_runs.get_by_task_id(task_id)
+
+        return await self._repository_call(query)
+
+    async def _handle_event(self, event: ArvunoEvent) -> None:
+        if event.event_type.value not in AUTOMATION_EVENT_TYPES:
+            return
+
         def query() -> list[StoredAutomation]:
             with self._unit_of_work_factory() as unit_of_work:
                 if unit_of_work.automations is None:
@@ -262,6 +386,9 @@ class AutomationService:
                     statuses={
                         AutomationRunStatus.COMPLETED,
                         AutomationRunStatus.FAILED,
+                        AutomationRunStatus.WAITING_CONFIRMATION,
+                        AutomationRunStatus.NEEDS_VERIFICATION,
+                        AutomationRunStatus.CANCELLED,
                         AutomationRunStatus.RISK_REJECTED,
                     },
                 )
@@ -372,6 +499,15 @@ class AutomationService:
             if task.status is TaskStatus.COMPLETED:
                 status = AutomationRunStatus.COMPLETED
                 error = None
+            elif task.status is TaskStatus.WAITING_CONFIRMATION:
+                status = AutomationRunStatus.WAITING_CONFIRMATION
+                error = None
+            elif task.status is TaskStatus.NEEDS_VERIFICATION:
+                status = AutomationRunStatus.NEEDS_VERIFICATION
+                error = task.error
+            elif task.status is TaskStatus.CANCELLED:
+                status = AutomationRunStatus.CANCELLED
+                error = task.error
             else:
                 status = AutomationRunStatus.FAILED
                 error = task.error or {

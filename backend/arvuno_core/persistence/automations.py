@@ -317,6 +317,33 @@ class AutomationRunRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to read the latest automation run.") from exc
 
+    def get_by_task_id(self, task_id: str) -> StoredAutomationRun | None:
+        try:
+            statement = (
+                select(AutomationRun)
+                .where(AutomationRun.task_id == task_id)
+                .order_by(AutomationRun.started_at.desc(), AutomationRun.id.desc())
+                .limit(1)
+            )
+            entity = self._session.scalars(statement).first()
+            return _to_stored_run(entity) if entity is not None else None
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to read the automation run for a task.") from exc
+
+    def list_by_statuses(
+        self,
+        statuses: set[AutomationRunStatus],
+    ) -> list[StoredAutomationRun]:
+        try:
+            statement = (
+                select(AutomationRun)
+                .where(AutomationRun.status.in_([status.value for status in statuses]))
+                .order_by(AutomationRun.started_at.asc(), AutomationRun.id.asc())
+            )
+            return [_to_stored_run(entity) for entity in self._session.scalars(statement)]
+        except SQLAlchemyError as exc:
+            raise RepositoryError("Failed to list automation runs by status.") from exc
+
     def list(
         self,
         automation_id: str,

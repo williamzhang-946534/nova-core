@@ -1,7 +1,7 @@
 # Arvuno 长期工程开发提示词手册（编号修正版）
 
-版本：1.1  
-当前基线：仓库 `Phase 10` 已完成验收；长期路线处于 `ARS-02.0 设计完成、待用户确认`。  
+版本：1.2  
+当前基线：仓库 `Phase 10` 历史验收完成；`REPAIR-01` WP0–WP9 修复已实施，WP10 文档同步、最终全量回归和 `docs/37` 验收报告正在当前批次完成，待用户复核。  
 当前推进边界：长期路线先推进到第七部分 `ARS-06 Embodied Intelligence / 机器人接入`；第八部分 `ARS-07 Industrial Intelligence / 工业环境扩展` 及其后的工业方向暂停，不进入当前计划。  
 用途：作为 Codex 后续分阶段开发的提示词库。
 
@@ -24,11 +24,11 @@
 | 编号     | 阶段                                         | 状态                |
 | ------ | ------------------------------------------ | ----------------- |
 | ARS-01 | Core Execution（基础智能控制）                     | 已完成               |
-| ARS-02 | Spatial Environmental Intelligence（空间环境智能） | ARS-02.0 设计完成，待确认 |
-| ARS-03 | World Memory（世界记忆）                         | 待开发               |
-| ARS-04 | World Reasoning & Orchestration（世界推理与任务编排） | 待开发               |
-| ARS-05 | Multimodal Perception（多模态感知）               | ARS-05.0 设计完成，待确认 |
-| ARS-06 | Embodied Intelligence（具身智能）                | 当前推进边界，待开发        |
+| ARS-02 | Spatial Environmental Intelligence（空间环境智能） | ARS-02.7 未完全通过；D1 已修复复验，阶段不关闭 |
+| ARS-03 | World Memory（世界记忆）                         | ARS-03 验收部分通过 / 未完全关闭 |
+| ARS-04 | World Reasoning & Orchestration（世界推理与任务编排） | ARS-04.5 验收部分通过 / 未完全关闭 |
+| ARS-05 | Multimodal Perception（多模态感知）               | ARS-05.4 Mock / 按需架构条件通过 / 不关闭 |
+| ARS-06 | Embodied Intelligence（具身智能）                | 当前推进边界；Mock 条件通过，REPAIR-01 修复完成，不关闭 |
 | ARS-07 | Industrial Intelligence（工业智能）              | 暂停，不进入当前计划        |
 | ARS-08 | Distributed World Intelligence（分布式世界智能）    | 远期规划，暂缓           |
 
@@ -50,6 +50,7 @@
 5. 新建文档前检查现有编号，禁止覆盖历史文件。
 6. 更新路线图时分别记录仓库历史工程状态和 ARS 长期路线状态。
 7. 下文出现的 `Phase 10`、`docs/16-phase10-acceptance-report.md` 等均指历史仓库记录，不得改名为 ARS。
+8. `REPAIR-01` 是缺陷修复与工程加固，不自动关闭任何 ARS 阶段，也不把 Mock 结果当作真实硬件验收。
 
 ---
 
@@ -1255,8 +1256,6 @@ Arvuno 必须能够判断当前问题还缺少哪些信息、确定需要补充�
 7. 支持敏感数据删除。
 8. 支持用户查看当前启用的感知能力。
 9. 支持撤销授权。
-
-
 10. 支持敏感功能的审计记录。
 
 完成后停止。
@@ -1395,6 +1394,8 @@ Arvuno Core 只能调用高层能力，不能直接控制关节或电机。
 ### 实现目标
 
 1. 实现对应型号的 Robot Adapter。
+
+
 2. 连接机器人。
 3. 获取机器人状态。
 4. 获取位置和定位信息。

@@ -6,6 +6,7 @@ import {
   DashboardOutlined,
   CommentOutlined,
   HomeOutlined,
+  RobotOutlined,
   DatabaseOutlined,
   UnorderedListOutlined,
   SettingOutlined,
@@ -34,6 +35,11 @@ export default function AppLayout() {
               key: "/devices",
               icon: <ApiOutlined />,
               label: <Link to="/devices">设备</Link>,
+            },
+            {
+              key: "/robots",
+              icon: <RobotOutlined />,
+              label: <Link to="/robots">机器人</Link>,
             },
             {
               key: "/spaces",

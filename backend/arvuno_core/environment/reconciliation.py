@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -7,6 +8,9 @@ from uuid import uuid4
 from arvuno_core.devices.errors import (
     AdapterTimeoutError,
     AdapterUnavailableError,
+    AuthorizationError,
+    DeviceError,
+    DeviceNotFoundError,
     DeviceUnavailableError,
 )
 from arvuno_core.devices.interface import DeviceAdapter
@@ -41,10 +45,12 @@ class EnvironmentReconciler:
         registry: DeviceRegistry,
         publisher: DeviceEventService,
         observation_pipeline: ObservationPipeline,
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         self._registry = registry
         self._publisher = publisher
         self._observation_pipeline = observation_pipeline
+        self._clock = clock
 
     async def reconcile(
         self,
@@ -67,16 +73,58 @@ class EnvironmentReconciler:
                 continue
             checked += 1
             previous = await self._registry.latest_state(registered.id)
+            availability_before = await self._registry.availability(registered.id)
             try:
                 current = await adapter.get_state(external_id)
-            except (AdapterUnavailableError, AdapterTimeoutError, DeviceUnavailableError):
+            except DeviceError as exc:
                 failures += 1
-                if previous is not None and previous.state != DeviceStateName.UNAVAILABLE:
-                    event = self._unavailable_event(adapter, registered.id, external_id, previous)
+                failure = _failure_classification(exc)
+                failed_at = self._clock()
+                transition = await self._registry.mark_availability(
+                    registered.id,
+                    unavailable=True,
+                    error_code=failure[0],
+                    failure_scope=failure[1],
+                    read_at=failed_at,
+                )
+                if transition.transitioned:
+                    event = self._unavailable_event(
+                        adapter,
+                        registered.id,
+                        external_id,
+                        previous,
+                        error_code=failure[0],
+                        failure_scope=failure[1],
+                        occurred_at=failed_at,
+                    )
                     await self._publisher.publish(event)
                     published += 1
                     reconciled += 1
                 continue
+
+            if previous is not None and _is_late(current.observed_at, previous.observed_at):
+                failures += 1
+                logger.warning(
+                    "reconciliation_skipped_late_state",
+                    extra={
+                        "adapter_id": adapter.adapter_id,
+                        "external_id": external_id,
+                        "observed_at": current.observed_at,
+                        "latest_observed_at": previous.observed_at,
+                    },
+                )
+                continue
+
+            read_at = self._clock()
+            transition = await self._registry.mark_availability(
+                registered.id,
+                unavailable=current.state == DeviceStateName.UNAVAILABLE,
+                error_code="device_unavailable"
+                if current.state == DeviceStateName.UNAVAILABLE
+                else None,
+                failure_scope="entity" if current.state == DeviceStateName.UNAVAILABLE else "none",
+                read_at=read_at,
+            )
 
             ingestion = await self._observation_pipeline.ingest_states(
                 adapter_id=adapter.adapter_id,
@@ -90,12 +138,20 @@ class EnvironmentReconciler:
             if previous is None:
                 continue
 
+            comparison_previous = previous
+            if (
+                availability_before.availability == "unavailable"
+                and previous.state != DeviceStateName.UNAVAILABLE
+            ):
+                comparison_previous = previous.model_copy(
+                    update={"state": DeviceStateName.UNAVAILABLE}
+                )
             event = self._difference_event(
                 adapter,
                 registered.id,
                 external_id,
                 registered.device_type,
-                previous,
+                comparison_previous,
                 current,
             )
             if event is None:
@@ -157,17 +213,61 @@ class EnvironmentReconciler:
         device_id: str,
         external_id: str,
         previous: Any,
+        *,
+        error_code: str,
+        failure_scope: str,
+        occurred_at: datetime,
     ) -> DeviceEvent:
+        previous_attributes = previous.attributes if previous is not None else {}
+        previous_state = (
+            previous.state.value if previous is not None else DeviceStateName.UNKNOWN.value
+        )
         return DeviceEvent(
             event_type=DeviceEventType.DEVICE_UNAVAILABLE,
             source=adapter.adapter_id,
             subject_id=device_id,
             external_id=external_id,
             payload={
-                "previous_state": previous.state.value,
+                "previous_state": previous_state,
                 "current_state": DeviceStateName.UNAVAILABLE.value,
-                "previous_attributes": previous.attributes,
+                "previous_attributes": previous_attributes,
                 "attributes": {},
+                "error_code": error_code,
+                "failure_scope": failure_scope,
+                "reason": _failure_reason(error_code),
             },
-            occurred_at=utc_now(),
+            occurred_at=occurred_at,
         )
+
+
+def _failure_classification(exc: DeviceError) -> tuple[str, str]:
+    if isinstance(exc, AdapterUnavailableError):
+        return exc.code, "adapter"
+    if isinstance(exc, AdapterTimeoutError):
+        return exc.code, "adapter"
+    if isinstance(exc, AuthorizationError):
+        return exc.code, "adapter"
+    if isinstance(exc, DeviceUnavailableError):
+        return exc.code, "device"
+    if isinstance(exc, DeviceNotFoundError):
+        return exc.code, "device"
+    return exc.code, "adapter"
+
+
+def _failure_reason(error_code: str) -> str:
+    reasons = {
+        "adapter_unavailable": "The adapter or its network connection is unavailable.",
+        "adapter_timeout": "The adapter read timed out.",
+        "authorization_failed": "Adapter authorization failed.",
+        "device_unavailable": "The device reported an unavailable state.",
+        "device_not_found": "The adapter no longer recognizes the device.",
+    }
+    return reasons.get(error_code, "The device read failed.")
+
+
+def _is_late(current: datetime, latest: datetime) -> bool:
+    return _utc(current) < _utc(latest)
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)

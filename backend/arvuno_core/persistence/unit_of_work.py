@@ -33,6 +33,7 @@ from arvuno_core.persistence.repositories import (
     ToolExecutionRepository,
     ToolRepository,
 )
+from arvuno_core.persistence.retention import RetentionRunRepository
 from arvuno_core.persistence.robots import RobotRepository
 from arvuno_core.persistence.spatial import (
     EntityRepository,
@@ -78,6 +79,7 @@ class SqlAlchemyUnitOfWork:
         self.perception: PerceptionRepository | None = None
         self.multimodal: MultimodalRepository | None = None
         self.robots: RobotRepository | None = None
+        self.retention_runs: RetentionRunRepository | None = None
 
     def __enter__(self) -> "SqlAlchemyUnitOfWork":
         self._session = self._session_factory()
@@ -110,6 +112,7 @@ class SqlAlchemyUnitOfWork:
         self.perception = PerceptionRepository(self._session)
         self.multimodal = MultimodalRepository(self._session)
         self.robots = RobotRepository(self._session)
+        self.retention_runs = RetentionRunRepository(self._session)
         return self
 
     def __exit__(
@@ -168,3 +171,4 @@ class SqlAlchemyUnitOfWork:
             self.perception = None
             self.multimodal = None
             self.robots = None
+            self.retention_runs = None

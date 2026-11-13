@@ -16,6 +16,7 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    NEEDS_VERIFICATION = "needs_verification"
 
 
 class TaskStepStatus(StrEnum):
@@ -42,10 +43,12 @@ _TASK_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
         TaskStatus.COMPLETED,
         TaskStatus.FAILED,
         TaskStatus.CANCELLED,
+        TaskStatus.NEEDS_VERIFICATION,
     },
     TaskStatus.COMPLETED: set(),
     TaskStatus.FAILED: set(),
     TaskStatus.CANCELLED: set(),
+    TaskStatus.NEEDS_VERIFICATION: set(),
 }
 
 _TASK_STEP_TRANSITIONS: dict[TaskStepStatus, set[TaskStepStatus]] = {
@@ -197,3 +200,11 @@ class TaskPage(BaseModel):
 
     items: list[StoredTask]
     total: int
+
+
+@dataclass(frozen=True)
+class TaskRecoveryResult:
+    resumed_task_ids: list[str]
+    waiting_cancelled_task_ids: list[str]
+    unknown_task_ids: list[str]
+    timed_out_task_ids: list[str]

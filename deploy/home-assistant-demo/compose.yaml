@@ -4,7 +4,7 @@
 # Open:        http://localhost:8123  (complete onboarding, then enable demo)
 services:
   homeassistant:
-    image: homeassistant/home-assistant:stable
+    image: homeassistant/home-assistant:2026.11.1
     container_name: homeassistant
     restart: unless-stopped
     environment:
@@ -12,4 +12,4 @@ services:
     volumes:
       - ./config:/config
     ports:
-      - "8123:8123"
+      - "127.0.0.1:8123:8123"

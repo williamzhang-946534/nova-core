@@ -73,11 +73,14 @@ def test_create_app_wires_event_bus_to_environment_context(
         assert state.updated_at == occurred_at
 
 
-def test_health_does_not_open_a_database_unit_of_work() -> None:
+def test_health_does_not_open_a_database_unit_of_work(tmp_path: Path) -> None:
     def forbidden_factory() -> SqlAlchemyUnitOfWork:
         raise AssertionError("The health endpoint must not open a database unit of work.")
 
-    app = create_app(unit_of_work_factory=forbidden_factory)
+    app = create_app(
+        runtime_settings(tmp_path),
+        unit_of_work_factory=forbidden_factory,
+    )
     client = TestClient(app)
 
     response = client.get("/health")

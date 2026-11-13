@@ -16,6 +16,11 @@ ToolPermissionSetting = Literal[
 ]
 
 AIStructuredOutputMode = Literal["json_schema", "json_object", "prompt_only"]
+RobotProfileSetting = Literal[
+    "desktop_robot",
+    "mobile_robot",
+    "legacy_mock_mobile",
+]
 
 
 class Settings(BaseSettings):
@@ -35,6 +40,8 @@ class Settings(BaseSettings):
     database_path: Path | None = None
     log_dir: Path = Field(default_factory=lambda: PROJECT_ROOT / "logs")
     log_filename: str = Field(default="arvuno-backend.log", min_length=1)
+    log_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
+    log_backup_count: int = Field(default=5, ge=1, le=100)
     backup_dir: Path = Field(default_factory=lambda: PROJECT_ROOT / "backups")
     backup_retention_count: int = Field(default=10, ge=1, le=1000)
     home_assistant_url: HttpUrl | None = None
@@ -50,10 +57,47 @@ class Settings(BaseSettings):
             "get_device_state": "allow",
             "get_environment_state": "allow",
             "control_device": "allow_low_risk",
+            "robot_status": "allow",
+            "robot_capabilities": "allow",
+            "robot_task_history": "allow",
+            "robot_consents": "allow",
+            "robot_observe_scene": "allow",
+            "robot_look_at": "allow",
+            "robot_speak": "allow",
+            "robot_listen": "allow",
+            "robot_safe_stop": "allow",
+            "robot_idle": "allow",
         }
     )
     event_retention_days: int = Field(default=180, ge=1, le=3650)
     diagnostic_event_retention_days: int = Field(default=90, ge=1, le=3650)
+    event_subscriber_timeout_seconds: float = Field(default=5.0, gt=0, le=300)
+    retention_scheduler_enabled: bool = True
+    retention_scheduler_tick_seconds: int = Field(default=60, ge=1, le=3600)
+    retention_manual_cooldown_seconds: int = Field(default=60, ge=1, le=3600)
+    event_retention_cleanup_enabled: bool = True
+    event_retention_interval_seconds: int = Field(default=3600, ge=1, le=86400)
+    event_retention_batch_size: int = Field(default=500, ge=1, le=5000)
+    observation_retention_cleanup_enabled: bool = True
+    observation_retention_interval_seconds: int = Field(default=3600, ge=1, le=86400)
+    observation_retention_batch_size: int = Field(default=1000, ge=1, le=5000)
+    observation_ingestion_batch_retention_days: int = Field(default=30, ge=1, le=3650)
+    multimodal_media_retention_cleanup_enabled: bool = True
+    multimodal_media_retention_interval_seconds: int = Field(default=900, ge=1, le=86400)
+    multimodal_media_retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    proactive_retention_cleanup_enabled: bool = True
+    proactive_retention_interval_seconds: int = Field(default=900, ge=1, le=86400)
+    proactive_retention_batch_size: int = Field(default=500, ge=1, le=5000)
+    environment_snapshot_retention_days: int = Field(default=30, ge=1, le=3650)
+    environment_snapshot_retention_cleanup_enabled: bool = True
+    environment_snapshot_retention_interval_seconds: int = Field(default=3600, ge=1, le=86400)
+    environment_snapshot_retention_batch_size: int = Field(default=500, ge=1, le=5000)
+    robot_profile: RobotProfileSetting = "desktop_robot"
+    robot_heartbeat_timeout_seconds: float = Field(default=30.0, gt=0, le=3600)
+    provider_log_retention_days: int = Field(default=90, ge=1, le=3650)
+    provider_log_retention_cleanup_enabled: bool = True
+    provider_log_retention_interval_seconds: int = Field(default=3600, ge=1, le=86400)
+    provider_log_retention_batch_size: int = Field(default=500, ge=1, le=5000)
     long_term_event_types: list[str] = Field(
         default_factory=lambda: [
             "task_started",
@@ -72,6 +116,8 @@ class Settings(BaseSettings):
     ai_max_retries: int = Field(default=2, ge=0, le=3)
     ai_structured_output_mode: AIStructuredOutputMode = "json_schema"
     ai_retry_backoff_seconds: float = Field(default=0.2, ge=0, le=10)
+    ai_provider_debug_logging: bool = False
+    ai_provider_debug_logging_ttl_seconds: int = Field(default=900, ge=60, le=3600)
 
     model_config = SettingsConfigDict(
         env_prefix="ARVUNO_",
@@ -148,6 +194,12 @@ class Settings(BaseSettings):
             ("http://", "https://")
         ):
             raise ValueError("ARVUNO_AI_BASE_URL must be an HTTP URL")
+        return self
+
+    @model_validator(mode="after")
+    def restrict_provider_debug_logging_to_development(self) -> "Settings":
+        if self.ai_provider_debug_logging and self.environment != "development":
+            raise ValueError("ARVUNO_AI_PROVIDER_DEBUG_LOGGING can only be enabled in development")
         return self
 
     def resolve_path(self, path: Path) -> Path:

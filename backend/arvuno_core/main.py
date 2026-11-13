@@ -7,7 +7,12 @@ from arvuno_core.persistence.database import DatabaseManager
 from arvuno_core.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 settings = get_settings()
-configure_logging(settings.log_level, settings.resolved_log_file)
+configure_logging(
+    settings.log_level,
+    settings.resolved_log_file,
+    max_bytes=settings.log_max_bytes,
+    backup_count=settings.log_backup_count,
+)
 database_manager = DatabaseManager(settings)
 database_manager.initialize_database()
 

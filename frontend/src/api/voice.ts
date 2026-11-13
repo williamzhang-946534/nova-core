@@ -1,5 +1,5 @@
 import { getApiBaseUrl, getApiToken } from "@/utils/api-config";
-import { ApiError, requestJson } from "./client";
+import { ApiError, fetchWithTimeout, requestJson } from "./client";
 import type { AgentChatResult } from "@/types/agent";
 import {
   isBoolean,
@@ -97,13 +97,7 @@ function isVoiceResult(value: unknown): value is VoiceInteractionResult {
   );
 }
 
-async function errorFromResponse(response: Response): Promise<ApiError> {
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+function errorFromResponse(response: Response, payload: unknown): ApiError {
   const error = isRecord(payload) && isRecord(payload.error) ? payload.error : {};
   const message = isString(error.message) ? error.message : `语音请求失败：${response.status}`;
   return new ApiError(message, {
@@ -140,11 +134,11 @@ export async function processVoice(request: VoiceUploadRequest): Promise<VoiceIn
 
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/chat/voice`, {
-      method: "POST",
-      headers,
-      body,
-    });
+    response = await fetchWithTimeout(
+      `${baseUrl}/api/chat/voice`,
+      { method: "POST", headers, body },
+      60_000,
+    );
   } catch {
     throw new ApiError("无法连接 Arvuno 后端服务。", { status: 0 });
   }
@@ -155,7 +149,7 @@ export async function processVoice(request: VoiceUploadRequest): Promise<VoiceIn
     payload = null;
   }
   if (!response.ok) {
-    throw await errorFromResponse(response);
+    throw errorFromResponse(response, payload);
   }
   if (!isRecord(payload) || !isVoiceResult(payload.data)) {
     throw new ApiError("后端返回的语音结果格式不符合预期。", { status: response.status });
@@ -201,15 +195,22 @@ export async function getTtsAudio(assetId: string): Promise<Blob> {
   }
   let response: Response;
   try {
-    response = await fetch(
+    response = await fetchWithTimeout(
       `${baseUrl}/api/multimodal/media-assets/${encodeURIComponent(assetId)}/content`,
       { headers },
+      60_000,
     );
   } catch {
     throw new ApiError("无法连接 Arvuno 后端服务。", { status: 0 });
   }
   if (!response.ok) {
-    throw await errorFromResponse(response);
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    throw errorFromResponse(response, payload);
   }
   return response.blob();
 }

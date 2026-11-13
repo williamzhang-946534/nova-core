@@ -30,6 +30,7 @@ from arvuno_core.robots.models import (
     RobotStateSnapshot,
     utc_now,
 )
+from arvuno_core.robots.profiles import RobotProfileName
 
 
 class MockRobotAdapter:
@@ -47,11 +48,13 @@ class MockRobotAdapter:
         *,
         external_id: str = "mock.desktop.robot",
         name: str = "Mock Desktop Robot",
+        profile: RobotProfileName | str = RobotProfileName.DESKTOP_ROBOT,
         clock: Callable[[], Any] = utc_now,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._external_id = external_id
         self._name = name
+        self.profile = RobotProfileName(profile)
         self._clock = clock
         self._sleep = sleep
         self._offline = False
@@ -71,7 +74,7 @@ class MockRobotAdapter:
             localization_state="known",
         )
         self._device_states = RobotDeviceStates()
-        self._capabilities = _default_capabilities()
+        self._capabilities = _default_capabilities(self.profile)
         self._subscribers: dict[int, RobotEventSubscriber] = {}
 
     async def get_robot(self, external_id: str) -> RegisteredRobot:
@@ -92,7 +95,8 @@ class MockRobotAdapter:
     ) -> RobotExecutionResult:
         self._validate_parameters(request.capability, request.parameters)
         self._raise_for_connection()
-        self._raise_for_safety()
+        if request.capability is not RobotCapabilityName.REQUEST_SAFE_STOP:
+            self._raise_for_safety()
         capability = self._capability(request.capability)
         self._raise_for_capability(capability)
         self._raise_for_motion_preconditions(request.capability)
@@ -101,7 +105,14 @@ class MockRobotAdapter:
             raise TimeoutError("The mock robot task timed out.")
 
         result: dict[str, Any]
-        if request.capability is RobotCapabilityName.NAVIGATE_TO:
+        if request.capability is RobotCapabilityName.REQUEST_SAFE_STOP:
+            self._emergency_stop = True
+            result = {
+                "requested": True,
+                "safe_stop_state": "stopped",
+                "verified": True,
+            }
+        elif request.capability is RobotCapabilityName.NAVIGATE_TO:
             target = request.parameters["target_location"]
             self._validate_navigation_target(target)
             if self._localization_lost:
@@ -212,6 +223,7 @@ class MockRobotAdapter:
             hardware_version="mock-hw-1",
             firmware_version="mock-fw-1",
             edge_runtime_version="mock-edge-1",
+            profile=self.profile.value,
             is_enabled=False,
             connection_state=self._connection_state(),
             is_online=not self._offline,
@@ -361,27 +373,40 @@ def _reject_low_level_parameters(parameters: dict[str, Any]) -> None:
     visit(parameters)
 
 
-def _default_capabilities() -> list[RobotCapability]:
-    definitions: list[tuple[RobotCapabilityName, str, bool]] = [
-        (RobotCapabilityName.NAVIGATE_TO, "medium_risk", True),
-        (RobotCapabilityName.OBSERVE, "read_only", True),
-        (RobotCapabilityName.INSPECT, "read_only", True),
-        (RobotCapabilityName.SPEAK, "low_risk", True),
-        (RobotCapabilityName.LISTEN, "read_only", True),
-        (RobotCapabilityName.RETURN_TO_DOCK, "medium_risk", True),
-        (RobotCapabilityName.CHARGE, "medium_risk", True),
-        (RobotCapabilityName.REPORT_STATUS, "read_only", True),
-    ]
+def _default_capabilities(profile: RobotProfileName) -> list[RobotCapability]:
+    if profile is RobotProfileName.DESKTOP_ROBOT:
+        definitions: list[tuple[RobotCapabilityName, str, bool]] = [
+            (RobotCapabilityName.REPORT_STATUS, "read_only", False),
+            (RobotCapabilityName.LOOK_AT, "medium_risk", True),
+            (RobotCapabilityName.OBSERVE_SCENE, "read_only", True),
+            (RobotCapabilityName.REQUEST_SAFE_STOP, "read_only", False),
+            (RobotCapabilityName.ENTER_IDLE_POSE, "medium_risk", True),
+            (RobotCapabilityName.SPEAK, "low_risk", True),
+            (RobotCapabilityName.LISTEN, "read_only", True),
+        ]
+    else:
+        definitions = [
+            (RobotCapabilityName.NAVIGATE_TO, "medium_risk", True),
+            (RobotCapabilityName.OBSERVE, "read_only", True),
+            (RobotCapabilityName.INSPECT, "read_only", True),
+            (RobotCapabilityName.SPEAK, "low_risk", True),
+            (RobotCapabilityName.LISTEN, "read_only", True),
+            (RobotCapabilityName.RETURN_TO_DOCK, "medium_risk", True),
+            (RobotCapabilityName.CHARGE, "medium_risk", True),
+            (RobotCapabilityName.REPORT_STATUS, "read_only", False),
+        ]
     capabilities: list[RobotCapability] = []
     for capability, risk, requires_confirmation in definitions:
         consents: list[str] = []
         if capability is RobotCapabilityName.OBSERVE:
             consents.append("camera")
+        if capability is RobotCapabilityName.OBSERVE_SCENE:
+            consents.append("camera")
         if capability is RobotCapabilityName.LISTEN:
             consents.append("microphone")
         if capability is RobotCapabilityName.SPEAK:
             consents.append("speaker")
-        if risk == "medium_risk":
+        if risk == "medium_risk" and capability is not RobotCapabilityName.REQUEST_SAFE_STOP:
             consents.append("motion")
         capabilities.append(
             RobotCapability(

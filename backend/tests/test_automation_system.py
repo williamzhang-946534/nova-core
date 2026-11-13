@@ -583,6 +583,7 @@ def test_automation_and_notification_api_requires_auth_and_exposes_history(
 
             async def trigger() -> None:
                 await app.state.event_bus.publish(temperature_event("sensor-api-device", 30))
+                await app.state.automation_service.wait_for_background_work()
 
             asyncio.run(trigger())
             history = client.get(f"/api/automations/{automation['id']}/runs", headers=headers)

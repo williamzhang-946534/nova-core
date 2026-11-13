@@ -33,9 +33,13 @@ class EventBus:
         unit_of_work_factory: UnitOfWorkFactory,
         *,
         max_publish_depth: int = 3,
+        subscriber_timeout_seconds: float = 5.0,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._max_publish_depth = max_publish_depth
+        if subscriber_timeout_seconds <= 0:
+            raise ValueError("subscriber_timeout_seconds must be positive.")
+        self._subscriber_timeout_seconds = subscriber_timeout_seconds
         self._subscriptions: dict[int, EventSubscription] = {}
         self._next_subscription_id = 1
 
@@ -103,22 +107,48 @@ class EventBus:
             raise EventPersistenceError("The event could not be stored.") from exc
 
     async def _dispatch(self, event: ArvunoEvent) -> None:
-        for subscription in list(self._subscriptions.values()):
-            if subscription.event_types is not None and (
-                event.event_type.value not in subscription.event_types
-            ):
+        subscriptions = [
+            subscription
+            for subscription in self._subscriptions.values()
+            if subscription.event_types is None
+            or event.event_type.value in subscription.event_types
+        ]
+        if not subscriptions:
+            return
+
+        async def dispatch_one(subscription: EventSubscription) -> None:
+            await asyncio.wait_for(
+                subscription.handler(event),
+                timeout=self._subscriber_timeout_seconds,
+            )
+
+        results = await asyncio.gather(
+            *(dispatch_one(subscription) for subscription in subscriptions),
+            return_exceptions=True,
+        )
+        for _subscription, result in zip(subscriptions, results, strict=True):
+            if not isinstance(result, BaseException):
                 continue
-            try:
-                await subscription.handler(event)
-            except Exception:
-                logger.exception(
-                    "event_subscriber_failed",
+            if isinstance(result, asyncio.CancelledError):
+                logger.warning(
+                    "event_subscriber_timeout",
                     extra={
                         "event_id": event.id,
                         "event_type": event.event_type.value,
                         "correlation_id": event.correlation_id,
+                        "subscriber_timeout_seconds": self._subscriber_timeout_seconds,
                     },
                 )
+                continue
+            logger.exception(
+                "event_subscriber_failed",
+                extra={
+                    "event_id": event.id,
+                    "event_type": event.event_type.value,
+                    "correlation_id": event.correlation_id,
+                },
+                exc_info=(type(result), result, result.__traceback__),
+            )
 
 
 def normalize_datetime(value: datetime) -> datetime:

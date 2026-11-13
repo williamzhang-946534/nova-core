@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, cast, func, literal_column, or_, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
@@ -195,11 +195,15 @@ class MemoryRepository:
 
     def revisions_for(self, memory_id: str) -> list[MemoryRevision]:
         try:
+            # rowid preserves insertion order when microsecond timestamps tie on SQLite.
             return list(
                 self._session.scalars(
                     select(MemoryRevision)
                     .where(MemoryRevision.memory_id == memory_id)
-                    .order_by(MemoryRevision.created_at.desc(), MemoryRevision.id.desc())
+                    .order_by(
+                        MemoryRevision.created_at.desc(),
+                        literal_column("rowid").desc(),
+                    )
                 )
             )
         except SQLAlchemyError as exc:

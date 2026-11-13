@@ -43,6 +43,7 @@ Arvuno 的测试重点不是追求覆盖率数字，而是保证真实世界操�
 4. Mock AI Provider。
 5. 固定时间与时区测试数据。
 6. 可配置 API Token 测试值。
+7. 每个 App 独立 Settings。
 
 测试不得依赖：
 
@@ -52,6 +53,9 @@ Arvuno 的测试重点不是追求覆盖率数字，而是保证真实世界操�
 - 网络可用性
 - 执行顺序
 - 当前系统时间
+- 项目根目录 `.env` 或开发者机器环境变量
+
+构造测试 App 或 `Settings` 时必须显式使用 `Settings(_env_file=None, ...)` 注入完整测试配置；需要临时文件的写入路径也在测试目录内生成。禁止为了通过某个开发者机器而隐式读取根 `.env`。
 
 ## 单元测试
 
@@ -129,8 +133,8 @@ Arvuno 的测试重点不是追求覆盖率数字，而是保证真实世界操�
 | 确认后 | running |
 | 全部步骤成功 | completed |
 | 任一关键步骤失败 | failed |
+| 步骤超时或重启时结果未知 | needs_verification |
 | 用户取消 | cancelled |
-| 步骤超时 | failed |
 | 重复确认 | 冲突或幂等返回 |
 
 ### 记忆操作
@@ -261,6 +265,71 @@ Arvuno 的测试重点不是追求覆盖率数字，而是保证真实世界操�
 8. 中高风险动作在任务创建前记录 `risk_rejected`。
 9. 自动化、事件、任务、工具执行和通知可通过 correlation ID 或关联 ID 追踪。
 
+### REPAIR-01 安全与数据治理回归
+
+以下当前回归必须保持通过；它们是安全边界的最低门槛，不是覆盖率上限。
+
+#### 机器人执行锁
+
+- 直接 `POST /api/robots/{robot_id}/enable` 拒绝且不调用 `RobotApplicationService` 执行物理动作。
+- 直接创建、确认和取消机器人任务请求返回 `ROBOT_EXECUTION_LOCKED`。
+- `POST /api/robot-perception/requests/{request_id}/execute` 拒绝，移动观察不再直接创建机器人任务。
+- Mock 机器人状态、能力、授权、治理、事件、任务历史、心跳和重连查询 / 遥测接口保持可用。
+
+#### Provider Log 隐私
+
+- 普通请求持久化元数据，不落库完整 messages、system prompt 或完整模型响应。
+- API Key、Token、密码、摄像头和麦克风媒体内容脱敏或不入日志。
+- Debug 捕获默认关闭；仅 development 可显式开启，TTL 为 60 到 3600 秒，读取和清理会移除过期捕获。
+- 旧全文日志通过迁移 `c9d5e7f8a9b0` 脱敏为不可恢复的占位元数据，迁移和测试不得打印用户内容。
+- 日志查询只返回 Schema v2 允许字段。
+
+#### Retention Scheduler
+
+- Event、Observation、Multimodal、Proactive、Environment Snapshot 和 Provider Log 独立启用、独立周期和独立批次。
+- 超期数据被删除，未超期数据保留；重复执行保持幂等。
+- 清理失败写入 `retention_runs`，应用退出将运行标记为取消，重启后可按新周期执行。
+- 媒体过期时同时处理数据库记录和 `data/media/multimodal` 文件；孤立引用显式暴露。
+- 备份恢复测试区分 SQLite 元数据恢复、媒体文件恢复和整体一致性。
+- 可注入时钟推进调度，不使用长时间 sleep 等待真实过期。
+
+#### 设备可用性状态机
+
+- ONLINE 到 UNAVAILABLE 发布一次不可用事件；UNAVAILABLE 到 UNAVAILABLE 不重复发布。
+- UNAVAILABLE 到 ONLINE 发布恢复事件；恢复后再不可用允许发布新事件。
+- 单设备离线、读取超时、认证失败、网络错误、实体 unavailable 和 Adapter 整体断线保留区分。
+- Adapter 异常更新可用性投影、错误分类和最近成功时间，保留最后一次可信观测。
+- 迟到事件按版本和状态语义处理，不覆盖更新的有效状态。
+- 应用重启后可重建状态，连续异常不导致 Automation、Proactive、Notification 或 Snapshot 重复触发。
+
+#### EventBus 与 Task 可靠性
+
+- 慢订阅者有明确超时，不无限阻塞设备轮询。
+- 单个订阅者异常被隔离，不影响后续订阅者和事件持久化。
+- 等待确认任务自动超时，应用重启后不把未确认或结果未知任务伪装为完成。
+- 设备执行结果未知保留 `needs_verification` 或对应 UNKNOWN 状态。
+- 取消请求、停止中、已取消、取消失败和执行状态未知分开表达。
+- 恢复后的任务有重复执行防护；Automation Run 能在确认或拒绝后获得最终结果。
+
+#### Robot Profile 与安全链
+
+- `desktop_robot` 只包含报告状态、看目标、场景观察、安全停止、待机姿态、说话和按需听的能力。
+- `mobile_robot` 保留 `navigate_to`、`return_to_dock`、`charge` 等接口但治理锁定；`legacy_mock_mobile` 仅限显式测试配置。
+- Adapter 发现不覆盖用户 enabled / approved / Consent 状态；`executable` 是派生结果。
+- 无 Consent、过期 Consent、撤销 Consent 和空间不匹配分别拒绝。
+- 确认 Token 缺失、过期、重复使用、参数改变或任务不匹配拒绝；`confirmed=true` 不能绕过确认。
+- 高风险动作默认拒绝；执行失败和状态验证失败不报告成功。
+- Robot Task、Tool Execution、Task Step、robot_request_id 和 correlation ID 可审计关联。
+
+#### Robot 失效安全与管理界面
+
+- 运行状态覆盖 online、offline、stale、busy、idle、error、emergency_stopped 和 unknown。
+- 心跳更新 `last_seen_at` 和 freshness；过期状态不作为实时状态交给 Planner。
+- 安全停止请求有真实 Adapter / Mock 反馈，不宣称硬件急停已实测。
+- 取消失败保留 `cancel_failed` 或 `execution_state_unknown`，不伪造成 `cancelled`。
+- Web Console 机器人页覆盖列表、运行状态、能力启停、Consent、任务、事件、安全状态和故障信息。
+- Agent 只读工具覆盖状态、能力、任务历史和授权状态，不直接访问 Robot Adapter。
+
 ## Mock Device Adapter
 
 Mock Adapter 是第一阶段的必需组件，不只是测试工具。
@@ -309,6 +378,11 @@ Mock Adapter 是第一阶段的必需组件，不只是测试工具。
 | 设备离线 | state=unavailable | 不执行 |
 | 执行超时 | Mock 延迟 | 失败并验证状态 |
 | API Key 缺失 | 环境变量为空 | 启动或调用失败，不泄漏密钥 |
+| 机器人直接 API 写操作 | create / confirm / cancel / enable | `ROBOT_EXECUTION_LOCKED` |
+| 机器人确认伪造 | `confirmed=true`，无服务端 Token | 拒绝 |
+| 机器人 Consent 缺失 / 过期 / 撤销 / 空间不符 | 执行前检查 | 拒绝 |
+| 机器人参数改变后重放确认 Token | 参数摘要不匹配 | 拒绝 |
+| 机器人移动 / 充电能力 | desktop 或未审批 mobile | 不出现在可执行目录或拒绝 |
 
 ## 验收测试
 
@@ -452,6 +526,21 @@ npm run build            # 前端构建
 
 具体命令以后续工程实际脚本为准。
 
+当前统一检查：
+
+```powershell
+.venv\Scripts\python.exe -m pytest backend -q
+.venv\Scripts\python.exe -m ruff check backend
+.venv\Scripts\python.exe -m ruff format --check backend
+.venv\Scripts\python.exe -m compileall -q backend
+cd frontend
+pnpm typecheck
+pnpm format:check
+pnpm test
+pnpm build
+cd ..
+```
+
 ## 测试数据管理
 
 1. 不使用真实 API Key。
@@ -460,6 +549,10 @@ npm run build            # 前端构建
 4. 设备名可使用测试名称。
 5. 时间使用固定 UTC 时间。
 6. 数据库每个测试独立创建和销毁。
+7. 不读取根目录 `.env`；`Settings` 必须使用 `_env_file=None` 注入。
+8. 迁移测试使用隔离临时数据库，不连接用户日常数据库。
+9. 多模态媒体写入测试专用临时目录。
+10. Provider Log 测试断言敏感明文不存在，不将用户内容写入日志或报告。
 
 ## 测试结论
 

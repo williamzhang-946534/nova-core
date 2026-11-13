@@ -236,16 +236,23 @@ class ProactiveRepository:
         except SQLAlchemyError as exc:
             raise RepositoryError("Failed to delete a proactive suggestion.") from exc
 
-    def expire_stale(self, *, now: datetime) -> int:
+    def expire_stale(self, *, now: datetime, limit: int | None = None) -> int:
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         try:
             stale_statuses = ("evaluated", "queued", "delivered", "opened")
-            result = self._session.execute(
-                select(ProactiveSuggestion).where(
+            statement = (
+                select(ProactiveSuggestion)
+                .where(
                     ProactiveSuggestion.status.in_(stale_statuses),
                     ProactiveSuggestion.expires_at.isnot(None),
                     ProactiveSuggestion.expires_at <= stored_datetime(now),
                 )
+                .order_by(ProactiveSuggestion.expires_at, ProactiveSuggestion.id)
             )
+            if limit is not None:
+                statement = statement.limit(limit)
+            result = self._session.execute(statement)
             count = 0
             for suggestion in result.scalars():
                 suggestion.status = "expired"

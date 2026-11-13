@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -111,7 +112,7 @@ class ToolExecutor:
             )
             raise ToolNotFoundError("The tool is not registered.")
 
-        execution_id = self._execution_id_factory()
+        execution_id = context.tool_execution_id or self._execution_id_factory()
         started_at = self._clock()
         try:
             validated_input = definition.input_type.model_validate(raw_input)
@@ -164,6 +165,22 @@ class ToolExecutor:
         )
 
         decision = await self._safety_policy.evaluate(definition, validated_input)
+        if not context.task_system and definition.category in {"robot_control", "robot_safety"}:
+            decision = replace(
+                decision,
+                permission_result=PermissionResult.DENIED,
+                details={
+                    **decision.details,
+                    "reason": "robot_actions_require_task_system",
+                },
+            )
+            error = ToolPermissionDeniedError(
+                "Robot actions can execute only through the task system.",
+                details={"execution_id": execution_id},
+            )
+            await self._finish_rejected(execution_id, started_at, decision, error)
+            raise error
+
         if decision.permission_result is not PermissionResult.ALLOWED and (
             decision.permission_result is not PermissionResult.CONFIRMATION_REQUIRED
         ):
@@ -171,7 +188,12 @@ class ToolExecutor:
             await self._finish_rejected(execution_id, started_at, decision, error)
             raise error
 
-        subject = self._confirmation_subject(tool_name, serialized_input, task_id)
+        subject = self._confirmation_subject(
+            tool_name,
+            serialized_input,
+            task_id,
+            execution_id,
+        )
         if decision.requires_confirmation or requires_confirmation:
             if confirmation_token is None:
                 token = self._confirmation_service.issue(subject)
@@ -206,8 +228,14 @@ class ToolExecutor:
                 raise error
 
         try:
-            output = await definition.handler(context, validated_input)
+            handler_context = replace(
+                context,
+                task_id=task_id,
+                task_step_id=task_step_id,
+                tool_execution_id=execution_id,
+            )
             serialized_output: dict[str, Any] | None = None
+            output = await definition.handler(handler_context, validated_input)
             if not isinstance(output, definition.output_type):
                 raise TypeError("The tool handler returned an unexpected output type.")
             serialized_output = output.model_dump(mode="json")
@@ -317,6 +345,17 @@ class ToolExecutor:
                     enabled=definition.enabled,
                 ),
             )
+            existing = await asyncio.to_thread(
+                self._execution_store.get_execution,
+                execution_id,
+            )
+            if existing is not None:
+                if existing.tool_name != definition.name:
+                    raise ToolStateConflictError(
+                        "The preallocated execution ID belongs to another tool.",
+                        details={"execution_id": execution_id},
+                    )
+                return
             await asyncio.to_thread(
                 self._execution_store.create_execution,
                 ToolExecutionCreate(
@@ -467,6 +506,7 @@ class ToolExecutor:
         tool_name: str,
         serialized_input: dict[str, Any],
         task_id: str | None,
+        execution_id: str,
     ) -> ConfirmationSubject:
         canonical_input = _canonical_json(serialized_input)
         fingerprint = hashlib.sha256(canonical_input.encode("utf-8")).hexdigest()
@@ -474,6 +514,7 @@ class ToolExecutor:
             tool_name=tool_name,
             input_fingerprint=fingerprint,
             task_id=task_id,
+            execution_id=execution_id,
         )
 
     @staticmethod

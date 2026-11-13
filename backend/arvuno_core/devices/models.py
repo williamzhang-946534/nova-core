@@ -51,6 +51,8 @@ class DeviceEventType(StrEnum):
 
 
 AdapterHealthStatus = Literal["healthy", "degraded", "disconnected"]
+DeviceAvailabilityState = Literal["online", "unavailable"]
+DeviceAvailabilityFailureScope = Literal["none", "adapter", "device", "entity"]
 
 
 def utc_now() -> datetime:
@@ -104,6 +106,18 @@ class DeviceState(BaseModel):
         "poll_clock",
         "unknown",
     ] = "poll_clock"
+
+
+class DeviceAvailability(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str = Field(min_length=1)
+    availability: DeviceAvailabilityState
+    failure_scope: DeviceAvailabilityFailureScope = "none"
+    error_code: str | None = Field(default=None, max_length=100)
+    last_successful_read_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    transitioned_at: datetime | None = None
 
 
 class DeviceErrorDetail(BaseModel):

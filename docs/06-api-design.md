@@ -392,6 +392,138 @@ Phase 8 AI 对话页面使用上述最小无状态 `/api/chat` 入口；对话�
 }
 ```
 
+## Robot API
+
+Robot API 受 API Token 认证保护。它只暴露状态、能力、授权、治理、机器人事件和任务历史；当前不提供直接物理动作入口。
+
+### `GET /api/robots`
+
+返回机器人列表。`enabled_only=true` 只返回已启用记录。
+
+### `GET /api/robots/{robot_id}`
+
+返回注册事实、连接状态、运动安全状态、急停 / 人工接管标记、电池、设备状态、位置和最近活动时间。
+
+### `GET /api/robots/{robot_id}/capabilities`
+
+返回按 Robot Profile 过滤后的能力目录。每项包含硬件事实 `discovered`、`supported`、`verification_status` 和安全 Schema，也包含治理状态 `enabled`、`approved`、`consent_granted` 与派生状态 `executable`。`runtime_enabled` 当前作为 `executable` 的兼容字段返回。
+
+`desktop_robot` 只声明 `report_status`、`look_at`、`observe_scene`、`request_safe_stop`、`enter_idle_pose`、`speak` 和 `listen`，不返回 `navigate_to`、`return_to_dock` 或 `charge`。`mobile_robot` 保留未来能力目录，但治理在硬件安全审批前保持拒绝。
+
+### `POST /api/robots/{robot_id}/capabilities/{capability}/governance`
+
+更新用户批准的启用状态。请求：
+
+```json
+{"enabled": true}
+```
+
+Adapter 发现结果不会覆盖用户批准状态；`executable` 仍然要求 discovered、supported、enabled、approved、有效 Consent 和运行时安全条件同时满足。
+
+### `GET /api/robots/{robot_id}/consents`
+
+查询机器人 Consent。支持 `capability` 和 `active_only` 过滤。授权按 `capability` 与 `data_category` 管理，可绑定 `space_id`，记录授予、过期和撤销时间。
+
+### `POST /api/robots/{robot_id}/consents`
+
+授予单项 Consent。请求至少包含 `capability` 和 `data_category`，可选 `space_id`、`expires_at`、`grant_source` 和 `granted_by`。摄像头、麦克风、扬声器、空间活动和物理运动不共用宽泛授权。
+
+### `POST /api/robots/{robot_id}/consents/{consent_id}/revoke`
+
+撤销指定 Consent，返回带 `revoked_at` 的授权记录。
+
+### `GET /api/robots/{robot_id}/state`
+
+查询最后一次保存的机器人状态投影。
+
+### `GET /api/robots/{robot_id}/runtime-state`
+
+查询运行时状态。响应包含 `online | offline | stale | busy | idle | error | emergency_stopped | unknown`、连接状态、运动安全状态、`is_fresh`、`last_seen_at`、心跳超时和活动任务数。过期状态必须显式暴露为 `stale` 或 `unknown`，不得当作实时空闲状态。
+
+### `POST /api/robots/{robot_id}/heartbeat`
+
+接收机器人心跳和状态报告。该接口更新 freshness、安全状态、电池、设备状态和位置，不是物理动作执行入口。
+
+### `POST /api/robots/{robot_id}/reconnect`
+
+请求重新同步机器人连接和真实状态。该接口只执行连接恢复与状态核对，不创建或恢复物理动作任务。
+
+### `GET /api/robots/{robot_id}/events`
+
+查询机器人事件，支持 `task_request_id` 与 `limit` 过滤。事件类型包含连接、状态、安全和任务状态变化。
+
+### `GET /api/robots/task-requests/{request_id}`
+
+查询单个机器人任务请求及其 `task_id`、`task_step_id`、`tool_execution_id` 和 `correlation_id`。
+
+### `GET /api/robots/{robot_id}/task-requests`
+
+查询机器人任务历史，支持 `status` 与 `limit` 过滤。
+
+### 锁定的机器人执行入口
+
+以下入口临时保留兼容路径，但当前不调用 `RobotApplicationService` 执行物理动作：
+
+- `POST /api/robots/{robot_id}/enable`
+- `POST /api/robots/{robot_id}/task-requests`
+- `POST /api/robots/task-requests/{request_id}/confirm`
+- `POST /api/robots/task-requests/{request_id}/cancel`
+
+它们统一返回 `403` 结构化错误：
+
+```json
+{
+  "error": {
+    "code": "ROBOT_EXECUTION_LOCKED",
+    "message": "Robot execution is locked until the unified safety chain is available.",
+    "details": {
+      "required_boundary": "task_system+tool_registry+safety_policy+tool_executor",
+      "temporary_lock": true
+    }
+  }
+}
+```
+
+机器人能力启用不是物理执行；真实动作必须进入 Task System、Tool Registry、Safety Policy、用户确认、Tool Executor、Robot Adapter、状态验证和 Execution Record 组成的统一安全链。
+
+## Robot 移动感知 API
+
+### `POST /api/robot-perception/requests/evaluate`
+
+评估一次主动感知候选。该评估不创建机器人物理任务。
+
+### `POST /api/robot-perception/requests/{request_id}/authorize`
+
+记录导航和摄像头授权候选。授权结果本身不触发物理动作。
+
+### `POST /api/robot-perception/requests/{request_id}/execute`
+
+当前直接拒绝，返回 `ROBOT_EXECUTION_LOCKED`。移动观察的真实执行必须等待统一安全链和硬件安全审批。
+
+### `GET /api/robot-perception/requests/{request_id}`
+
+查询感知请求状态、授权作用域和执行追踪。
+
+## Retention API
+
+Retention API 受认证保护，用于运维观察和手动清理；普通用户请求不应触发高频清理。
+
+### `GET /api/retention/policies`
+
+返回六个独立任务策略：`event`、`observation`、`multimodal_media`、`proactive`、`environment_snapshot` 和 `provider_log`。每项包含 `enabled`、`interval_seconds`、`batch_size` 和业务清理规则。
+
+### `GET /api/retention/status`
+
+返回 `single_process_only: true`、每个任务的下次执行时间、最近执行结果和失败信息。当前调度器是应用内单进程调度，不声明多进程分布式协调能力。
+
+### `GET /api/retention/failures`
+
+查询失败记录，`limit` 限制在 1 到 200。
+
+### `POST /api/retention/run`
+
+手动执行已启用任务。请求体可为空；提供 `jobs` 时必须去重且任务必须启用。手动触发有服务端冷却窗口，重复触发返回 `409`；同一任务运行中同样返回 `409`。所有时间计算使用 UTC。
+
 ## 自动化 API
 
 以下接口只管理少量需要 Arvuno 上下文的规则，不提供通用自动化编辑器、场景系统或 Home Assistant 自动化迁移功能。
@@ -451,7 +583,7 @@ Phase 8 AI 对话页面使用上述最小无状态 `/api/chat` 入口；对话�
 
 ### `GET /api/automations/{automation_id}/runs`
 
-查询规则执行历史。Run 状态为 `running | completed | failed | cooldown_skipped | condition_not_met | risk_rejected`，记录包含触发事件、命中上下文、任务 ID、通知 ID 和错误结构。
+查询规则执行历史。Run 状态为 `running | completed | failed | waiting_confirmation | needs_verification | cancelled | cooldown_skipped | condition_not_met | risk_rejected`，记录包含触发事件、命中上下文、任务 ID、通知 ID 和错误结构。
 
 ### `GET /api/notifications`
 
@@ -555,7 +687,9 @@ Phase 8 未实现 WebSocket。Web 控制台当前通过 TanStack Query 按服务
 | 任务记录 | `/api/tasks`、`/api/tasks/{id}` |
 | 自动化 | `/api/automations`、`/api/automations/{id}/runs` |
 | 通知 | `/api/notifications` |
+| 机器人管理 | `/api/robots`、`/api/robots/{id}/capabilities`、`/api/robots/{id}/consents`、`/api/robots/{id}/task-requests`、`/api/robots/{id}/events` |
 | 系统设置 | `/api/settings` |
+| 数据保留运维 | `/api/retention/policies`、`/api/retention/status`、`/api/retention/failures`、`/api/retention/run` |
 
 Phase 8 事件时间线仅使用 `/api/events` 轮询；Phase 9 已提供自动化和站内通知 API。WebSocket 推送与 Conversation API 尚未实现。
 
@@ -566,4 +700,6 @@ Phase 8 事件时间线仅使用 `/api/events` 轮询；Phase 9 已提供自动�
 3. 高风险操作返回 `CONFIRMATION_REQUIRED` 或拒绝。
 4. API 不得暴露 API Key。
 5. 设备动作必须通过统一工具执行链路。
-6. 前端调试工具接口在生产模式下应默认关闭或严格限制。
+6. 机器人物理动作必须通过统一机器人安全执行链路；直接 Robot API 写入口返回 `ROBOT_EXECUTION_LOCKED`。
+7. `confirmed=true` 不是机器人确认凭据。确认必须使用服务端签发、绑定 robot/request/能力/参数摘要/空间范围并只能单次使用的 Token。
+8. 前端调试工具接口在生产模式下应默认关闭或严格限制。

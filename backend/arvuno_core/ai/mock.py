@@ -8,7 +8,7 @@ from uuid import uuid4
 from arvuno_core.ai.errors import ProviderInvalidOutputError
 from arvuno_core.ai.logging_support import (
     finish_provider_log,
-    redacted_output,
+    redacted_provider_error,
     start_provider_log,
 )
 from arvuno_core.ai.models import ProviderRequest, ProviderResponse, ProviderUsage
@@ -25,11 +25,15 @@ class MockAIProvider:
         outputs: list[dict[str, Any] | str] | None = None,
         errors: list[Exception] | None = None,
         log_id_factory: Callable[[], str] = lambda: str(uuid4()),
+        debug_logging: bool = False,
+        debug_logging_ttl_seconds: int = 900,
     ) -> None:
         self._log_store = log_store
         self._outputs = list(outputs or [])
         self._errors = list(errors or [])
         self._log_id_factory = log_id_factory
+        self._debug_logging = debug_logging
+        self._debug_logging_ttl_seconds = debug_logging_ttl_seconds
         self.requests: list[ProviderRequest] = []
 
     async def generate(self, request: ProviderRequest) -> ProviderResponse:
@@ -41,6 +45,8 @@ class MockAIProvider:
             provider="mock",
             model="mock-agent",
             request=request,
+            debug_logging=self._debug_logging,
+            debug_logging_ttl_seconds=self._debug_logging_ttl_seconds,
         )
         started_at = monotonic()
         output_count = len(self.requests) - 1
@@ -73,7 +79,7 @@ class MockAIProvider:
             log_id,
             ProviderLogFinish(
                 status="succeeded",
-                output_summary=redacted_output({"structured_output": output}),
+                output_summary={},
                 latency_ms=0,
                 prompt_tokens=1,
                 completion_tokens=1,
@@ -103,10 +109,11 @@ class MockAIProvider:
             log_id,
             ProviderLogFinish(
                 status="failed",
-                error={
-                    "code": getattr(error, "code", "PROVIDER_ERROR"),
-                    "message": getattr(error, "message", "The mock provider failed."),
-                },
+                error=redacted_provider_error(
+                    {
+                        "code": getattr(error, "code", "PROVIDER_ERROR"),
+                    }
+                ),
                 latency_ms=max(0, int((monotonic() - started_at) * 1000)),
             ),
         )

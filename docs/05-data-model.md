@@ -268,22 +268,24 @@ AI 对话。
 
 ### 13. `provider_logs`
 
-AI 模型调用日志。
+AI 模型调用日志。物理列名保留 `input_summary` / `output_summary`，Schema v2 下两者只保存运行元数据；不保存普通或历史全文调试内容。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| id | UUID PK | 调用 ID |
+| id | UUID PK | 调用 ID，同时作为 `request_id` |
 | provider | string | Provider 名称 |
 | model | string | 模型名 |
 | request_kind | string | chat / structured / tools |
-| input_summary | JSON | 脱敏输入摘要 |
-| output_summary | JSON | 脱敏输出摘要 |
+| input_summary | JSON | Schema v2 元数据：schema_version、request_id、correlation_id、message_count、role_distribution；显式 debug 内容仅临时存在 |
+| output_summary | JSON | Schema v2 下通常为 `{}`；状态与用量写入顶层字段 |
 | status | string | 成功或失败 |
-| error | JSON nullable | 错误 |
+| error | JSON nullable | 只保留脱敏后的错误码，不保存模型错误正文 |
 | latency_ms | integer nullable | 耗时 |
 | prompt_tokens | integer nullable | 输入 Token |
 | completion_tokens | integer nullable | 输出 Token |
 | created_at | timestamp | 创建时间 |
+
+`ai_provider_debug_logging` 默认 `false`；开启时必须在 `development`，TTL 为 60–3600 秒，内容先做敏感值脱敏，认证凭据不落库。读取或清理时移除过期/无效 `debug` 节点。历史全文在迁移 `c9d5e7f8a9b0` 中降为元数据，旧全文不可恢复，也不复制到新表。
 
 ### 14. `user_preferences`
 
@@ -567,6 +569,7 @@ pending
 
 planning → failed
 running → failed
+running → needs_verification
 waiting_confirmation → cancelled
 running → cancelled
 ```
@@ -582,6 +585,15 @@ running → cancelled
 | completed | 成功完成 |
 | failed | 执行失败 |
 | cancelled | 已取消 |
+| needs_verification | 执行超时或重启时外部结果未知，需要重新核对设备状态 |
+
+## Robot Profile 与能力治理
+
+`robots.profile` 固定机器人的硬件形态，当前默认 `desktop_robot`。`desktop_robot` 只声明 `report_status`、`look_at`、`observe_scene`、`request_safe_stop`、`enter_idle_pose`、`speak` 和 `listen`。`mobile_robot` 保留未来接口，但在硬件和安全审批前禁止治理启用。
+
+`robot_capabilities` 保存 Adapter 发现和硬件事实：`discovered`、`supported`、schema、验证状态、风险、确认要求、Consent 要求和安全包络。`robot_capability_governance` 保存用户治理状态：`enabled`、`approved`、`consent_granted`、审批人和审批时间。同步 Adapter 时不会覆盖治理表。
+
+`executable` 是派生状态，必须同时满足 Profile 支持、验证通过、用户启用、用户批准和所需 Consent 已授予。缺少任一项都不能执行。
 
 ## 自动化执行状态机
 
@@ -592,6 +604,9 @@ risk_rejected
 
 running → completed
 running → failed
+running → waiting_confirmation
+running → needs_verification
+running → cancelled
 ```
 
 状态说明：
@@ -601,6 +616,9 @@ running → failed
 | running | 条件与风险检查通过，动作正在执行 |
 | completed | 通知已生成，或自动化任务成功完成 |
 | failed | 动作或任务执行失败 |
+| waiting_confirmation | 关联 Task 等待用户确认 |
+| needs_verification | 关联 Task 的外部执行结果未知，需要重新核对 |
+| cancelled | 用户拒绝确认，或关联 Task 被取消 |
 | cooldown_skipped | 规则命中但处于冷却期 |
 | condition_not_met | 触发事件匹配但附加条件不满足 |
 | risk_rejected | 工具动作风险高于 `low_risk`，在任务创建前拒绝 |
@@ -626,12 +644,19 @@ running → failed
 | 当前设备状态 | 保留最新状态 |
 | 设备状态快照 | 默认保留 30 天，可配置 |
 | 事件记录 | 默认保留 180 天，可配置 |
+| 观测批次 | 默认保留 30 天，可配置，分批删除 |
+| 多模态媒体 | 默认启用独立保留清理，媒体记录和物理文件同批处理 |
+| 主动感知请求 | 默认启用独立保留清理，分批删除 |
 | 对话记录 | 用户可选择保留或归档 |
 | 任务记录 | 长期保留 |
 | 工具执行记录 | 长期保留 |
 | Provider 日志 | 默认保留 90 天，内容脱敏 |
 | 用户偏好 | 长期保留，可编辑和删除 |
 | 长期记忆 | 用户确认后保留，可删除 |
+
+Retention Scheduler 在 lifespan 中启动/停止，由六个独立业务清理任务组成：Event、Observation、Multimodal、Proactive、Environment Snapshot、Provider Log。每类任务有独立 enable、interval、batch 和 retention 配置；调度器只负责到期选择、进程内并发去重、失败审计和手动触发冷却，删除规则仍在各业务仓储/任务内。执行审计写入 `retention_runs`：job_name、status、started_at、finished_at、affected_count、错误和 next_run_at。时间统一 UTC。调度器是单进程内存实现，不提供跨进程分布式锁。
+
+Retention 与 Privacy Erasure 边界不同：Retention 按期限清理业务数据；Privacy Erasure 响应用户删除请求，必须按数据类别同时评估数据库行、媒体文件、日志和备份恢复边界。授权审计等按设计保留的记录不得被 Retention 删除。
 
 ## 备份方案
 
@@ -642,6 +667,8 @@ running → failed
 3. 备份文件写入 `backups/`。
 4. 保留最近 N 份备份。
 5. 每次数据库迁移前强制备份。
+
+备份集包含 SQLite 元数据库和 `data/media/multimodal` 下的媒体文件，生成哈希清单。恢复时分别校验数据库完整性和媒体引用/哈希；结果必须区分“元数据恢复成功”“媒体完整恢复成功”“媒体丢失/孤立引用”。数据库恢复成功不能描述为整个系统全量恢复成功。
 
 备份目录不提交到 Git。
 

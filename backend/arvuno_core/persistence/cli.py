@@ -38,7 +38,12 @@ def run_cli(settings: Settings | None = None) -> int:
         print(f"Configuration is invalid: {exc.error_count()} setting error(s).", flush=True)
         return 1
 
-    configure_logging(app_settings.log_level, app_settings.resolved_log_file)
+    configure_logging(
+        app_settings.log_level,
+        app_settings.resolved_log_file,
+        max_bytes=app_settings.log_max_bytes,
+        backup_count=app_settings.log_backup_count,
+    )
     args = _parse_args()
     manager = DatabaseManager(app_settings)
 
